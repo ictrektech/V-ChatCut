@@ -52,6 +52,10 @@ export function rememberPort(port: number, location: EmbeddedPortLocation = {}):
 export interface ListenWithAffinityOptions extends EmbeddedPortLocation {
   /** Overridable for tests; the real server always uses the documented port. */
   readonly canonicalPort?: number;
+  /** Bind address. Desktop keeps loopback; container deployments opt into 0.0.0.0. */
+  readonly bindHost?: string;
+  /** Fail instead of selecting a fallback port. Container health checks require a stable port. */
+  readonly strictPort?: boolean;
   readonly log?: (message: string) => void;
 }
 
@@ -65,12 +69,19 @@ export interface ListenWithAffinityOptions extends EmbeddedPortLocation {
  */
 export async function listenWithAffinity(
   server: Server,
-  { canonicalPort = CANONICAL_EMBEDDED_PORT, home, profileId, log = console.warn }: ListenWithAffinityOptions = {},
+  {
+    canonicalPort = CANONICAL_EMBEDDED_PORT,
+    bindHost = '127.0.0.1',
+    strictPort = false,
+    home,
+    profileId,
+    log = console.warn,
+  }: ListenWithAffinityOptions = {},
 ): Promise<number> {
   const listenOn = (port: number) => new Promise<number>((resolvePort, reject) => {
     const onError = (err: Error) => reject(err);
     server.once('error', onError);
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, bindHost, () => {
       server.off('error', onError);
       const addr = server.address();
       if (addr && typeof addr === 'object') resolvePort(addr.port);
@@ -78,6 +89,8 @@ export async function listenWithAffinity(
     });
   });
   const inUse = (err: unknown): boolean => (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
+
+  if (strictPort) return listenOn(canonicalPort);
 
   const remembered = readRememberedPort({ home, profileId });
   if (remembered !== null) {

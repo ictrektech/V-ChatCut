@@ -1,0 +1,202 @@
+x-v-chatcut-backend-env: &v-chatcut-backend-env
+  NODE_ENV: production
+  PORT: 5199
+  OPENCHATCUT_BIND_HOST: 0.0.0.0
+  OPENCHATCUT_DATA_DIR: /data
+  MEDIA_DIR: /data/media/uploads
+  OPENCHATCUT_TRUST_PROXY: "true"
+  OPENCHATCUT_RENDER_CONCURRENCY: ${OPENCHATCUT_RENDER_CONCURRENCY:-2}
+  OPENCHATCUT_MAX_ACTIVE_EXPORTS: ${OPENCHATCUT_MAX_ACTIVE_EXPORTS:-1}
+  OPENCHATCUT_FFMPEG_THREADS: ${OPENCHATCUT_FFMPEG_THREADS:-4}
+
+x-v-chatcut-frontend-base: &v-chatcut-frontend-base
+  restart: unless-stopped
+  networks:
+    vos_default:
+      aliases:
+        - v-chatcut-frontend
+  labels:
+    - "traefik.enable=true"
+    - "traefik.docker.network=vos_default"
+    - "traefik.http.routers.v-chatcut-top-open.rule=PathPrefix(`/app/com.ictrek.v-chatcut`) && HeaderRegexp(`Sec-Fetch-Dest`, `document`)"
+    - "traefik.http.routers.v-chatcut-top-open.priority=1000"
+    - "traefik.http.routers.v-chatcut-top-open.service=v-chatcut-web"
+    - "traefik.http.routers.v-chatcut-top-open.middlewares=v-chatcut-top-open-redirect"
+    - "traefik.http.middlewares.v-chatcut-top-open-redirect.redirectregex.regex=^(https?://[^/]+)/app/com\\.ictrek\\.v-chatcut/?(?:\\?.*)?$"
+    - "traefik.http.middlewares.v-chatcut-top-open-redirect.redirectregex.replacement=$${1}/#/app/com.ictrek.v-chatcut/com-ictrek-v-chatcut/v-chatcut"
+    - "traefik.http.middlewares.v-chatcut-top-open-redirect.redirectregex.permanent=false"
+    - "traefik.http.routers.v-chatcut-web.rule=PathPrefix(`/app/com.ictrek.v-chatcut`)"
+    - "traefik.http.routers.v-chatcut-web.service=v-chatcut-web"
+    - "traefik.http.routers.v-chatcut-web.middlewares=v-chatcut-web-slash,v-chatcut-web-strip"
+    - "traefik.http.middlewares.v-chatcut-web-slash.redirectregex.regex=^(.*)/app/com\\.ictrek\\.v-chatcut$"
+    - "traefik.http.middlewares.v-chatcut-web-slash.redirectregex.replacement=$${1}/app/com.ictrek.v-chatcut/"
+    - "traefik.http.middlewares.v-chatcut-web-slash.redirectregex.permanent=true"
+    - "traefik.http.middlewares.v-chatcut-web-strip.stripprefix.prefixes=/app/com.ictrek.v-chatcut"
+    - "traefik.http.services.v-chatcut-web.loadbalancer.server.port=80"
+    - "traefik.http.routers.v-chatcut-assets.rule=(PathPrefix(`/fonts`) || PathPrefix(`/library-previews`) || PathPrefix(`/luts`) || PathPrefix(`/mediapipe`) || PathPrefix(`/models`) || PathPrefix(`/voice-samples`) || PathPrefix(`/audio`) || Path(`/openchatcut-icon.png`)) && HeaderRegexp(`Referer`, `/app/com\\.ictrek\\.v-chatcut/`)"
+    - "traefik.http.routers.v-chatcut-assets.priority=1200"
+    - "traefik.http.routers.v-chatcut-assets.service=v-chatcut-web"
+
+x-v-chatcut-backend-base: &v-chatcut-backend-base
+  restart: unless-stopped
+  networks:
+    vos_default:
+      aliases:
+        - v-chatcut-backend
+  environment: *v-chatcut-backend-env
+  volumes:
+    - ${VOS_APP_STORAGE_PATH}/data:/data
+  labels:
+    - "traefik.enable=true"
+    - "traefik.docker.network=vos_default"
+    - "traefik.http.routers.v-chatcut-api.rule=(PathPrefix(`/api`) || PathPrefix(`/llm`) || PathPrefix(`/assemblyai`) || PathPrefix(`/media/uploads`) || PathPrefix(`/upload`) || PathPrefix(`/generate`) || PathPrefix(`/e2b`) || PathPrefix(`/export`) || PathPrefix(`/render-still`) || PathPrefix(`/render-clip`)) && HeaderRegexp(`Referer`, `/app/com\\.ictrek\\.v-chatcut/`)"
+    - "traefik.http.routers.v-chatcut-api.priority=1300"
+    - "traefik.http.routers.v-chatcut-api.service=v-chatcut-api"
+    - "traefik.http.services.v-chatcut-api.loadbalancer.server.port=5199"
+  healthcheck:
+    test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:5199/ >/dev/null || exit 1"]
+    interval: 30s
+    timeout: 10s
+    start_period: 20s
+    retries: 3
+
+x-v-chatcut-backend-gpu-base: &v-chatcut-backend-gpu-base
+  <<: *v-chatcut-backend-base
+  runtime: nvidia
+  environment:
+    <<: *v-chatcut-backend-env
+    NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+    NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video,graphics}
+
+services:
+  v-chatcut-frontend-amd-with-cuda:
+    <<: *v-chatcut-frontend-base
+    profiles: ["amd-with-cuda"]
+    image: ${V_CHATCUT_FRONTEND_AMD_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-amd-with-cuda:
+        condition: service_healthy
+
+  v-chatcut-backend-amd-with-cuda:
+    <<: *v-chatcut-backend-gpu-base
+    profiles: ["amd-with-cuda"]
+    image: ${V_CHATCUT_BACKEND_AMD_WITH_CUDA_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: amd-with-cuda
+      OPENCHATCUT_H264_ENCODER: h264_nvenc
+      CC_RENDER_GL: angle-egl
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video,graphics}
+    pull_policy: always
+
+  v-chatcut-frontend-amd-without-cuda:
+    <<: *v-chatcut-frontend-base
+    profiles: ["amd-without-cuda"]
+    image: ${V_CHATCUT_FRONTEND_AMD_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-amd-without-cuda:
+        condition: service_healthy
+
+  v-chatcut-backend-amd-without-cuda:
+    <<: *v-chatcut-backend-base
+    profiles: ["amd-without-cuda"]
+    image: ${V_CHATCUT_BACKEND_AMD_WITHOUT_CUDA_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: amd-without-cuda
+      OPENCHATCUT_DISABLE_HARDWARE_ENCODING: "true"
+      CC_RENDER_GL: swangle
+    pull_policy: always
+
+  v-chatcut-frontend-arm-with-cuda:
+    <<: *v-chatcut-frontend-base
+    profiles: ["arm-with-cuda"]
+    image: ${V_CHATCUT_FRONTEND_ARM_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-arm-with-cuda:
+        condition: service_healthy
+
+  v-chatcut-backend-arm-with-cuda:
+    <<: *v-chatcut-backend-gpu-base
+    profiles: ["arm-with-cuda"]
+    image: ${V_CHATCUT_BACKEND_ARM_WITH_CUDA_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: arm-with-cuda
+      OPENCHATCUT_H264_ENCODER: h264_nvenc
+      CC_RENDER_GL: angle-egl
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video,graphics}
+    pull_policy: always
+
+  v-chatcut-frontend-arm-without-cuda:
+    <<: *v-chatcut-frontend-base
+    profiles: ["arm-without-cuda"]
+    image: ${V_CHATCUT_FRONTEND_ARM_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-arm-without-cuda:
+        condition: service_healthy
+
+  v-chatcut-backend-arm-without-cuda:
+    <<: *v-chatcut-backend-base
+    profiles: ["arm-without-cuda"]
+    image: ${V_CHATCUT_BACKEND_ARM_WITHOUT_CUDA_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: arm-without-cuda
+      OPENCHATCUT_DISABLE_HARDWARE_ENCODING: "true"
+      CC_RENDER_GL: swangle
+    pull_policy: always
+
+  v-chatcut-frontend-l4t:
+    <<: *v-chatcut-frontend-base
+    profiles: ["l4t"]
+    image: ${V_CHATCUT_FRONTEND_ARM_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-l4t:
+        condition: service_healthy
+
+  v-chatcut-backend-l4t:
+    <<: *v-chatcut-backend-gpu-base
+    profiles: ["l4t"]
+    image: ${V_CHATCUT_BACKEND_L4T_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: l4t
+      OPENCHATCUT_H264_ENCODER: h264_nvenc
+      CC_RENDER_GL: angle-egl
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video,graphics}
+    pull_policy: always
+
+  v-chatcut-frontend-thor-spark:
+    <<: *v-chatcut-frontend-base
+    profiles: ["thor-spark"]
+    image: ${V_CHATCUT_FRONTEND_ARM_IMAGE}
+    pull_policy: always
+    depends_on:
+      v-chatcut-backend-thor-spark:
+        condition: service_healthy
+
+  v-chatcut-backend-thor-spark:
+    <<: *v-chatcut-backend-gpu-base
+    profiles: ["thor-spark"]
+    image: ${V_CHATCUT_BACKEND_THOR_SPARK_IMAGE}
+    environment:
+      <<: *v-chatcut-backend-env
+      OPENCHATCUT_PROFILE: thor-spark
+      OPENCHATCUT_H264_ENCODER: h264_nvenc
+      CC_RENDER_GL: angle-egl
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video,graphics}
+    pull_policy: always
+
+networks:
+  vos_default:
+    external: true

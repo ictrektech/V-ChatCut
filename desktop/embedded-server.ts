@@ -14,7 +14,7 @@ import { trustedEditorRequest } from '../server/editor-auth.ts';
 import { proxyMiddleware, type ProxyRoute } from '../server/proxy.ts';
 import { parseEnvText } from './env-file.ts';
 import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
-import { listenWithAffinity } from './embedded-port.ts';
+import { listenWithAffinity, type ListenWithAffinityOptions } from './embedded-port.ts';
 import { runtimeProfile } from '../server/runtime-profile.ts';
 import { distStaticMiddleware, uploadsMiddleware } from './static-files.ts';
 
@@ -70,7 +70,10 @@ export function mountAssemblyAiProxy(
   app.use('/assemblyai', proxyMiddleware(route));
 }
 
-export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServer> {
+export async function startEmbeddedServer(
+  distDir: string,
+  listenOptions: ListenWithAffinityOptions = {},
+): Promise<EmbeddedServer> {
   await seedFromEnvLocal();
 
   const app = createMiniConnect((err) => {
@@ -110,7 +113,11 @@ export async function startEmbeddedServer(distDir: string): Promise<EmbeddedServ
   const profile = runtimeProfile();
   const port = await listenWithAffinity(
     server,
-    profile.mode === 'isolated-dev' ? { profileId: profile.id } : {},
+    {
+      ...(profile.mode === 'isolated-dev' ? { profileId: profile.id } : {}),
+      ...listenOptions,
+    },
   );
-  return { server, port, origin: `http://127.0.0.1:${port}` };
+  const host = listenOptions.bindHost ?? '127.0.0.1';
+  return { server, port, origin: `http://${host}:${port}` };
 }

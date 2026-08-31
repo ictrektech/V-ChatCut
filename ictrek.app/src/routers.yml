@@ -1,0 +1,20 @@
+routers:
+  - id: com-ictrek-v-chatcut
+    kind: group
+    title:
+      zh-CN: V-ChatCut
+      en: V-ChatCut
+    icon: lucide:clapperboard
+    order: 220
+    children:
+      - id: v-chatcut
+        kind: page
+        title:
+          zh-CN: 视频编辑
+          en: Video Editor
+        icon: lucide:film
+        iframe-src: /app/com.ictrek.v-chatcut/?v=__APP_VERSION__
+        order: 10
+        keep-alive: true
+        entry-point: true
+        embed: true

@@ -1,0 +1,74 @@
+id: com.ictrek.v-chatcut
+name:
+  zh-CN: V-ChatCut
+  en: V-ChatCut
+description:
+  zh-CN: 本地优先、Agent 驱动的多轨视频编辑器，支持字幕、动效、媒体生成、智能分析与硬件加速导出。
+  en: Local-first, agent-native multitrack video editor with captions, motion graphics, media generation, intelligent analysis, and hardware-accelerated export.
+version: __APP_VERSION__
+author: ictrek
+category: [media]
+icon: icon.png
+arch: [amd64, arm64]
+
+frontend:
+  enabled: true
+  basePath: /app/com.ictrek.v-chatcut
+
+platform:
+  version: ">=3.0.0"
+
+profiles:
+  - name: amd-with-cuda
+    title:
+      zh-CN: AMD64 NVIDIA CUDA
+      en: AMD64 NVIDIA CUDA
+    description:
+      zh-CN: AMD64 平台，启用 NVIDIA runtime、NVENC 和 GPU 渲染。
+      en: AMD64 platform with NVIDIA runtime, NVENC, and GPU rendering.
+    conflicts: [amd-without-cuda, arm-with-cuda, arm-without-cuda, l4t, thor-spark]
+  - name: amd-without-cuda
+    title:
+      zh-CN: AMD64 CPU
+      en: AMD64 CPU
+    description:
+      zh-CN: AMD64 平台，使用软件渲染和 libx264 编码。
+      en: AMD64 platform using software rendering and libx264 encoding.
+    conflicts: [amd-with-cuda, arm-with-cuda, arm-without-cuda, l4t, thor-spark]
+  - name: arm-with-cuda
+    title:
+      zh-CN: ARM64 NVIDIA CUDA
+      en: ARM64 NVIDIA CUDA
+    description:
+      zh-CN: 通用 ARM64 NVIDIA CUDA 平台，启用 NVIDIA runtime 和硬件编码探测。
+      en: Generic ARM64 NVIDIA CUDA platform with NVIDIA runtime and hardware encoder probing.
+    conflicts: [amd-with-cuda, amd-without-cuda, arm-without-cuda, l4t, thor-spark]
+  - name: arm-without-cuda
+    title:
+      zh-CN: ARM64 CPU
+      en: ARM64 CPU
+    description:
+      zh-CN: ARM64 平台，使用软件渲染和 libx264 编码。
+      en: ARM64 platform using software rendering and libx264 encoding.
+    conflicts: [amd-with-cuda, amd-without-cuda, arm-with-cuda, l4t, thor-spark]
+  - name: l4t
+    title:
+      zh-CN: Jetson / L4T
+      en: Jetson / L4T
+    description:
+      zh-CN: Jetson / L4T 平台，启用 NVIDIA runtime 和硬件编码探测。
+      en: Jetson / L4T platform with NVIDIA runtime and hardware encoder probing.
+    conflicts: [amd-with-cuda, amd-without-cuda, arm-with-cuda, arm-without-cuda, thor-spark]
+  - name: thor-spark
+    title:
+      zh-CN: Thor / Spark
+      en: Thor / Spark
+    description:
+      zh-CN: NVIDIA Thor / Spark ARM64 平台，启用 NVIDIA runtime 和硬件编码探测。
+      en: NVIDIA Thor / Spark ARM64 platform with NVIDIA runtime and hardware encoder probing.
+    conflicts: [amd-with-cuda, amd-without-cuda, arm-with-cuda, arm-without-cuda, l4t]
+
+storage:
+  directories:
+    - path: data
+      mode: "0755"

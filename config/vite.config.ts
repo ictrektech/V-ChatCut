@@ -127,6 +127,7 @@ export default defineConfig(({ mode }) => {
   // E2B_TEMPLATE (+ its process.env fallback) is now read live via the keystore getter below.
 
   return {
+    base: env.VITE_BASE_PATH || '/',
     // Server-computed manifest of which key-gated capabilities are configured,
     // injected for the agent's system prompt (src/agent/capabilities.ts). BOOLEANS
     // ONLY — no key value is ever exposed to the browser.

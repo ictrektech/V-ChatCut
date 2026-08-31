@@ -294,6 +294,10 @@ npm run desktop:dev
 
 The desktop app uses an Electron shell with the same embedded services. The web development build and desktop build share project, agent, generation, and export logic.
 
+### VOS integration
+
+The VOS application definition lives in `ictrek.app/`, and container build files live in `vos_docker/`. The frontend has AMD64 and ARM64 images only. The backend provides six profiles: `amd-with-cuda`, `amd-without-cuda`, `arm-with-cuda`, `arm-without-cuda`, `l4t`, and `thor-spark`. CUDA profiles prefer NVENC and automatically fall back to libx264 when hardware encoding is unavailable. Use `vos_docker/build_image.sh --sheet <Feishu-sheet>` on each matching build host, then run `ictrek.app/scripts/update_version.sh patch` to trigger the VOS pull-package workflow.
+
 ---
 
 ## Project Status

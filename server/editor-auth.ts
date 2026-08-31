@@ -70,9 +70,13 @@ function requestEditorOrigin(req: IncomingMessage): string | null {
   const configured = process.env.OPENCHATCUT_EDITOR_URL?.trim();
   const expected = configuredEditorOrigin();
   if (configured && !expected) return null;
+  const trustProxy = /^(?:1|true|yes)$/i.test(process.env.OPENCHATCUT_TRUST_PROXY ?? '');
+  const forwardedProtocol = trustProxy ? headerValue(req, 'x-forwarded-proto')?.split(',')[0]?.trim() : null;
   const protocol = expected
     ? new URL(expected).protocol
-    : req.socket instanceof TLSSocket ? 'https:' : 'http:';
+    : forwardedProtocol === 'https' || forwardedProtocol === 'http'
+      ? `${forwardedProtocol}:`
+      : req.socket instanceof TLSSocket ? 'https:' : 'http:';
   try {
     const actual = new URL(`${protocol}//${host}`);
     if (expected) return actual.origin === expected ? expected : null;
@@ -83,7 +87,8 @@ function requestEditorOrigin(req: IncomingMessage): string | null {
 }
 
 export function trustedEditorRequest(req: IncomingMessage, requireOrigin: boolean): boolean {
-  if (!isLoopbackAddress(req.socket.remoteAddress)) return false;
+  const trustProxy = /^(?:1|true|yes)$/i.test(process.env.OPENCHATCUT_TRUST_PROXY ?? '');
+  if (!isLoopbackAddress(req.socket.remoteAddress) && !trustProxy) return false;
   const expected = requestEditorOrigin(req);
   if (!expected) return false;
   const origin = headerValue(req, 'origin');

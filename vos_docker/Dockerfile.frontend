@@ -1,0 +1,22 @@
+ARG NODE_BASE_IMAGE=node:24-alpine
+ARG NGINX_BASE_IMAGE=nginx:1.29-alpine
+
+FROM ${NODE_BASE_IMAGE} AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+ARG VITE_BASE_PATH=/app/com.ictrek.v-chatcut/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+RUN npm run sync:mediapipe \
+    && npm run verify:server-tool-catalog \
+    && npx tsc -b \
+    && npx vite build --config config/vite.config.ts
+
+FROM ${NGINX_BASE_IMAGE}
+COPY vos_docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
+CMD ["nginx", "-g", "daemon off;"]

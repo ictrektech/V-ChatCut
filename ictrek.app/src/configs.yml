@@ -1,0 +1,30 @@
+configs:
+  - name: OPENCHATCUT_RENDER_CONCURRENCY
+    type: integer
+    title:
+      zh-CN: 视频渲染并发数
+      en: Video Render Concurrency
+    description:
+      zh-CN: Remotion 渲染单个视频时使用的并发数；内存较小的设备建议设为 1。
+      en: Remotion concurrency used for a single video render. Use 1 on memory-constrained devices.
+    default: 2
+
+  - name: OPENCHATCUT_MAX_ACTIVE_EXPORTS
+    type: integer
+    title:
+      zh-CN: 最大同时导出任务数
+      en: Maximum Active Exports
+    description:
+      zh-CN: 后端允许同时执行的重型视频导出任务数量。
+      en: Maximum number of heavy video export jobs allowed to run concurrently.
+    default: 1
+
+  - name: OPENCHATCUT_FFMPEG_THREADS
+    type: integer
+    title:
+      zh-CN: FFmpeg 线程数
+      en: FFmpeg Threads
+    description:
+      zh-CN: 每个 FFmpeg 任务可使用的最大线程数。
+      en: Maximum number of threads available to each FFmpeg operation.
+    default: 4
