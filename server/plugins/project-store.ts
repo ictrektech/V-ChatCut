@@ -58,15 +58,7 @@ export type {
   StoredEntryValue,
 } from './project-store-locked.ts';
 
-const {
-  legacyStorePath: LEGACY_STORE_PATH,
-  legacyBackupPath: LEGACY_BACKUP_PATH,
-  directory: STORE_DIR,
-  indexPath: INDEX_PATH,
-  quarantineDir: QUARANTINE_DIR,
-  readyPath: READY_PATH,
-  tombstonePath: DELETED_PROJECTS_PATH,
-} = runtimeProfile().projectStore;
+const paths = () => runtimeProfile().projectStore;
 const PROJECT_DOCUMENT_KEY = /^project:(.+)$/;
 const PROJECT_EDIT_OWNERSHIP_PREFIX = 'project-edit-ownership:';
 const VALID_PROJECT_ID = /^[a-zA-Z0-9_-]{1,160}$/;
@@ -79,7 +71,7 @@ interface StoreFile {
 
 async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }> {
   try {
-    const parsed: unknown = JSON.parse(await readFile(LEGACY_STORE_PATH, 'utf8'));
+    const parsed: unknown = JSON.parse(await readFile(paths().legacyStorePath, 'utf8'));
     if (!isProjectStoreRecord(parsed) || parsed.version !== 1 || !isProjectStoreEntries(parsed.entries)) {
       throw new Error('invalid legacy project store');
     }
@@ -93,8 +85,8 @@ async function readLegacyStore(): Promise<{ exists: boolean; store: StoreFile }>
 }
 
 const entryPath = (key: string) => key === 'projects'
-  ? INDEX_PATH
-  : join(STORE_DIR, `${encodeURIComponent(key)}.json`);
+  ? paths().indexPath
+  : join(paths().directory, `${encodeURIComponent(key)}.json`);
 
 async function writeStoredEntry(key: string, value: unknown): Promise<void> {
   if (sqliteStoreEnabled()) {
@@ -113,17 +105,19 @@ interface QuarantinedEntry {
 }
 
 async function quarantineUnknownEntryFile(file: string): Promise<void> {
-  await durableMkdir(QUARANTINE_DIR, true);
+  const profilePaths = paths();
+  await durableMkdir(profilePaths.quarantineDir, true);
   await durableRename(
-    join(STORE_DIR, file),
-    join(QUARANTINE_DIR, `${file}.${randomUUID()}.corrupt`),
+    join(profilePaths.directory, file),
+    join(profilePaths.quarantineDir, `${file}.${randomUUID()}.corrupt`),
   );
 }
 
 async function quarantineEntryFile(file: string, key: string): Promise<QuarantinedEntry> {
   const quarantineFile = `${file}.${Date.now()}.${randomUUID()}.corrupt`;
-  await durableMkdir(QUARANTINE_DIR, true);
-  await durableRename(join(STORE_DIR, file), join(QUARANTINE_DIR, quarantineFile));
+  const profilePaths = paths();
+  await durableMkdir(profilePaths.quarantineDir, true);
+  await durableRename(join(profilePaths.directory, file), join(profilePaths.quarantineDir, quarantineFile));
   const marker: QuarantinedEntry = {
     version: 1,
     kind: 'quarantined-project-store-entry',
@@ -148,7 +142,7 @@ async function readDeletedProjects(): Promise<Record<string, number>> {
     return Object.fromEntries(entries) as Record<string, number>;
   }
   try {
-    const parsed: unknown = JSON.parse(await readFile(DELETED_PROJECTS_PATH, 'utf8'));
+    const parsed: unknown = JSON.parse(await readFile(paths().tombstonePath, 'utf8'));
     if (!isProjectStoreRecord(parsed)) throw new Error('invalid deleted project registry');
     const entries = Object.entries(parsed);
     if (!entries.every(([id, deletedAt]) => VALID_PROJECT_ID.test(id) && typeof deletedAt === 'number')) {
@@ -166,7 +160,7 @@ async function writeDeletedProjects(projects: Record<string, number>): Promise<v
     await sqliteWriteEntry(DELETED_PROJECTS_KV_KEY, projects);
     return;
   }
-  await atomicWriteJson(DELETED_PROJECTS_PATH, projects);
+  await atomicWriteJson(paths().tombstonePath, projects);
 }
 
 async function writeEntries(entries: Record<string, unknown>): Promise<void> {
@@ -174,7 +168,7 @@ async function writeEntries(entries: Record<string, unknown>): Promise<void> {
     await sqliteWriteAll(entries);
     return;
   }
-  await durableMkdir(STORE_DIR, true);
+  await durableMkdir(paths().directory, true);
   const ordered = Object.entries(entries).sort(([left], [right]) => {
     if (left === 'projects') return 1;
     if (right === 'projects') return -1;
@@ -185,8 +179,9 @@ async function writeEntries(entries: Record<string, unknown>): Promise<void> {
 
 async function readDirectoryEntries(): Promise<Record<string, unknown>> {
   if (sqliteStoreEnabled()) return sqliteReadAll();
+  const directory = paths().directory;
   const entries: Record<string, unknown> = {};
-  for (const file of await readdir(STORE_DIR)) {
+  for (const file of await readdir(directory)) {
     if (!file.endsWith('.json')) continue;
     let key: string;
     try {
@@ -199,7 +194,7 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
       await quarantineUnknownEntryFile(file);
       continue;
     }
-    const raw = await readFile(join(STORE_DIR, file), 'utf8');
+    const raw = await readFile(join(directory, file), 'utf8');
     try {
       entries[key] = JSON.parse(raw);
     } catch {
@@ -211,7 +206,7 @@ async function readDirectoryEntries(): Promise<Record<string, unknown>> {
 
 async function readyExists(): Promise<boolean> {
   try {
-    await access(READY_PATH);
+    await access(paths().readyPath);
     return true;
   } catch {
     return false;
@@ -222,24 +217,27 @@ async function migrateLegacyStore(): Promise<void> {
   if (await readyExists()) return;
   const legacy = await readLegacyStore();
   await writeEntries(legacy.store.entries);
-  await atomicWriteFile(READY_PATH, '1\n');
+  const profilePaths = paths();
+  await atomicWriteFile(profilePaths.readyPath, '1\n');
   if (!legacy.exists) return;
-  await durableRemove(LEGACY_BACKUP_PATH);
-  await durableRename(LEGACY_STORE_PATH, LEGACY_BACKUP_PATH);
+  await durableRemove(profilePaths.legacyBackupPath);
+  await durableRename(profilePaths.legacyStorePath, profilePaths.legacyBackupPath);
 }
 
-let legacyStoreReady: Promise<void> | undefined;
+const legacyStoreReady = new Map<string, Promise<void>>();
 async function ensureStoreReady(): Promise<void> {
   await initializeSqliteProjectStore();
   // SQLite backend: no JSON dir / .ready / legacy-file migration needed; the
   // database self-creates its directory and schema (phase 1 adds import).
   if (sqliteStoreEnabled()) return;
   if (await readyExists()) return;
-  legacyStoreReady ??= migrateLegacyStore();
+  const root = runtimeProfile().rootDir;
+  const pending = legacyStoreReady.get(root) ?? migrateLegacyStore();
+  legacyStoreReady.set(root, pending);
   try {
-    await legacyStoreReady;
+    await pending;
   } catch (error) {
-    legacyStoreReady = undefined;
+    legacyStoreReady.delete(root);
     throw error;
   }
 }
@@ -326,7 +324,8 @@ async function purgeProjectEntryFilesDurably(projectId: string): Promise<void> {
     await sqliteDeleteProjectEntries(projectId);
     return;
   }
-  for (const file of await readdir(STORE_DIR)) {
+  const directory = paths().directory;
+  for (const file of await readdir(directory)) {
     if (!file.endsWith('.json')) continue;
     let key: string;
     try {
@@ -340,7 +339,7 @@ async function purgeProjectEntryFilesDurably(projectId: string): Promise<void> {
       continue;
     }
     if (projectIdFromProjectStoreKey(key) === projectId) {
-      await durableRemove(join(STORE_DIR, file));
+      await durableRemove(join(directory, file));
     }
   }
 }

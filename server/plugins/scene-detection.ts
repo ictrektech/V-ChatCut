@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { runtimeProfile } from '../runtime-profile.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -269,7 +270,20 @@ interface InternalJob extends SceneDetectionJobSnapshot {
   options: Pick<DetectScenesOptions, 'threshold' | 'minSceneMs' | 'maxScenes'>;
 }
 
-const jobs = new Map<string, InternalJob>();
+const jobMaps = new Map<string, Map<string, InternalJob>>();
+function activeJobs(): Map<string, InternalJob> {
+  const root = runtimeProfile().rootDir;
+  let jobs = jobMaps.get(root);
+  if (!jobs) { jobs = new Map(); jobMaps.set(root, jobs); }
+  return jobs;
+}
+const jobs = new Proxy(new Map<string, InternalJob>(), {
+  get(_target, property) {
+    const map = activeJobs();
+    const value = Reflect.get(map, property, map) as unknown;
+    return typeof value === 'function' ? value.bind(map) : value;
+  },
+});
 const terminalStatuses = new Set<SceneDetectionJobStatus>(['completed', 'failed', 'cancelled']);
 
 function publicJob(job: InternalJob): SceneDetectionJobSnapshot {

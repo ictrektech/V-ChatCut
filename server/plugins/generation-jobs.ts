@@ -8,6 +8,7 @@ import {
   resumeGenerationJobDownload,
   resumeRestoredJobs,
 } from './generation-job-lifecycle.ts';
+import { vosAuthEnabled } from '../vos-user-context.ts';
 
 export {
   IncompleteGenerationResultError,
@@ -118,9 +119,11 @@ export function generationProgressPlugin(): Plugin {
   return {
     name: 'openchatcut-generation-progress',
     configureServer(server) {
-      void initializeGenerationJobs().catch((error) => {
-        server.config.logger.error(`[generate:progress] failed to restore operations: ${error instanceof Error ? error.message : String(error)}`);
-      });
+      if (!vosAuthEnabled()) {
+        void initializeGenerationJobs().catch((error) => {
+          server.config.logger.error(`[generate:progress] failed to restore operations: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
       server.middlewares.use('/generate/progress', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {

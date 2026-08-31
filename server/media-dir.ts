@@ -45,7 +45,7 @@ export function uploadDir(
   profile: RuntimeProfile = runtimeProfile(),
   configuredMediaDir?: string,
 ): string {
-  if (isIsolatedDevProfile(profile)) return profile.mediaDir;
+  if (isIsolatedDevProfile(profile) || profile.mode === 'vos-user') return profile.mediaDir;
   return expandMediaDir(configuredMediaDir ?? getKey('MEDIA_DIR')) ?? profile.mediaDir;
 }
 
@@ -55,7 +55,7 @@ export function uploadReadDirs(
   configuredMediaDir?: string,
 ): readonly string[] {
   const writable = uploadDir(profile, configuredMediaDir);
-  if (isIsolatedDevProfile(profile) || writable === profile.mediaDir) return [writable];
+  if (isIsolatedDevProfile(profile) || profile.mode === 'vos-user' || writable === profile.mediaDir) return [writable];
   return [writable, profile.mediaDir];
 }
 

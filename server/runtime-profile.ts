@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { readDataDirPointer } from './data-dir.ts';
+import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
 
 export const DEV_PROFILE_ID_ENV = 'OPENCHATCUT_DEV_PROFILE_ID';
 export const DATA_DIR_ENV = 'OPENCHATCUT_DATA_DIR';
@@ -36,7 +37,12 @@ export interface IsolatedDevRuntimeProfile extends RuntimeProfileBase {
   readonly mode: 'isolated-dev';
 }
 
-export type RuntimeProfile = DefaultRuntimeProfile | IsolatedDevRuntimeProfile;
+export interface VOSUserRuntimeProfile extends RuntimeProfileBase {
+  readonly mode: 'vos-user';
+  readonly id: string;
+}
+
+export type RuntimeProfile = DefaultRuntimeProfile | IsolatedDevRuntimeProfile | VOSUserRuntimeProfile;
 
 type RuntimeProfileEnv = Readonly<Record<string, string | undefined>>;
 
@@ -161,8 +167,24 @@ export function resolveRuntimeProfile(
 }
 
 const activeProfile = resolveRuntimeProfile();
+const vosProfiles = new Map<string, VOSUserRuntimeProfile>();
 
 export function runtimeProfile(): RuntimeProfile {
+  const user = currentVOSUser();
+  if (vosAuthEnabled() && user) {
+    const existing = vosProfiles.get(user.namespace);
+    if (existing) return existing;
+    const rootDir = join(activeProfile.rootDir, 'users', user.namespace);
+    const base = profileBase(
+      rootDir,
+      join(rootDir, 'media', 'uploads'),
+      join(rootDir, 'generation-operations-v1.json'),
+      join(rootDir, 'settings.env'),
+    );
+    const profile = Object.freeze({ mode: 'vos-user', id: user.namespace, ...base }) as VOSUserRuntimeProfile;
+    vosProfiles.set(user.namespace, profile);
+    return profile;
+  }
   return activeProfile;
 }
 

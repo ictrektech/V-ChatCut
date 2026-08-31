@@ -22,13 +22,14 @@ export interface SearchHit {
   score: number;
 }
 
-let connection: DatabaseSync | null = null;
+const connections = new Map<string, DatabaseSync>();
 
 function openSearchConnection(): DatabaseSync | null {
-  if (connection) return connection;
   if (!sqliteStoreEnabled()) return null;
   try {
     const path = storePath();
+    const existing = connections.get(path);
+    if (existing) return existing;
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path);
     db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
@@ -39,7 +40,7 @@ function openSearchConnection(): DatabaseSync | null {
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE} USING fts5(
       kind, project_id, content, ref, tokenize = 'unicode61'
     )`);
-    connection = db;
+    connections.set(path, db);
     return db;
   } catch {
     // Search is an enhancement; never break the store when unavailable.
@@ -49,8 +50,8 @@ function openSearchConnection(): DatabaseSync | null {
 
 /** Close the connection (verify isolation / profile switches). */
 export function resetSearchForTests(): void {
-  connection?.close();
-  connection = null;
+  for (const connection of connections.values()) connection.close();
+  connections.clear();
 }
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');

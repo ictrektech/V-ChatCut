@@ -5,26 +5,32 @@ import type { EditorBootstrapInfo } from '../shared/editor-auth-transport.ts';
 import { isLoopbackAddress } from './loopback-address.ts';
 import { loadOrCreateMcpToken } from './mcp-token.ts';
 import { runtimeProfile } from './runtime-profile.ts';
+import { currentVOSUser, vosAuthEnabled, type VOSUserContext } from './vos-user-context.ts';
 
 export const EDITOR_BOOTSTRAP_HEADER = 'x-openchatcut-editor-bootstrap';
 
 /** Lazy so tests and the env override never touch the filesystem. */
-let persistentMcpToken: string | undefined;
+const persistentMcpTokens = new Map<string, string>();
+const vosMcpOwners = new Map<string, VOSUserContext>();
 
 function resolvePersistentMcpToken(): string {
-  if (persistentMcpToken === undefined) {
-    const profile = runtimeProfile();
+  const profile = runtimeProfile();
+  const cached = persistentMcpTokens.get(profile.rootDir);
+  if (cached) return cached;
+  {
     const result = loadOrCreateMcpToken(
-      profile.mode === 'isolated-dev' ? { profileId: profile.id } : {},
+      profile.mode === 'isolated-dev'
+        ? { profileId: profile.id }
+        : profile.mode === 'vos-user' ? { rootDir: profile.rootDir } : {},
     );
     if (!result.persisted) {
       // The MCP guide promises a stable token; when the filesystem breaks that
       // promise the user deserves one line saying so and how to pin it.
       console.warn('[mcp] token could not be persisted and will change on restart; set OPENCHATCUT_MCP_TOKEN to pin it');
     }
-    persistentMcpToken = result.token;
+    persistentMcpTokens.set(profile.rootDir, result.token);
+    return result.token;
   }
-  return persistentMcpToken;
 }
 const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
   localhost: true,
@@ -33,7 +39,16 @@ const LOCAL_EDITOR_HOSTS: Readonly<Record<string, true>> = {
 };
 
 export function externalMcpToken(): string {
-  return process.env.OPENCHATCUT_MCP_TOKEN?.trim() || resolvePersistentMcpToken();
+  const token = (!vosAuthEnabled() ? process.env.OPENCHATCUT_MCP_TOKEN?.trim() : '') || resolvePersistentMcpToken();
+  const user = currentVOSUser();
+  if (user) vosMcpOwners.set(token, user);
+  return token;
+}
+
+export function externalMcpVOSUser(req: IncomingMessage): VOSUserContext | undefined {
+  const authorization = req.headers.authorization;
+  if (!authorization?.startsWith('Bearer ')) return undefined;
+  return vosMcpOwners.get(authorization.slice('Bearer '.length));
 }
 
 function secretMatches(actual: string | undefined, expected: string): boolean {
@@ -80,6 +95,11 @@ function requestEditorOrigin(req: IncomingMessage): string | null {
   try {
     const actual = new URL(`${protocol}//${host}`);
     if (expected) return actual.origin === expected ? expected : null;
+    // VOS serves the editor through its own trusted reverse proxy and the
+    // public host is installation-specific. The VOS session middleware runs
+    // before editor routes, so accepting that proxy-provided origin here does
+    // not restore the old unauthenticated remote-editor trust model.
+    if (vosAuthEnabled() && trustProxy) return actual.origin;
     return LOCAL_EDITOR_HOSTS[actual.hostname.toLowerCase()] === true ? actual.origin : null;
   } catch {
     return null;

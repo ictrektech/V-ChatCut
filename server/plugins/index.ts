@@ -53,10 +53,12 @@ import { getKey } from "../keystore.ts";
 
 import { installSystemProxy } from '../net.ts';
 import { requestShapeGatePlugin } from './request-shape-gate';
+import { vosAuthPlugin } from './vos-auth.ts';
 
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
   return [
+    vosAuthPlugin(),
     requestShapeGatePlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),

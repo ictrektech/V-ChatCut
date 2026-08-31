@@ -18,6 +18,19 @@ frontend:
 platform:
   version: ">=3.0.0"
 
+oauth2:
+  client:
+    id: com.ictrek.v-chatcut
+    redirect_uris:
+      - https://app.vos-platform.internal/callback
+    grant_types: [authorization_code, refresh_token]
+    response_types: [code]
+    scopes: [openid, profile, email]
+    pkce_required: true
+    token_endpoint_auth_method: none
+    access_token_ttl: 3600
+    refresh_token_ttl: 1209600
+
 profiles:
   - name: amd-with-cuda
     title:

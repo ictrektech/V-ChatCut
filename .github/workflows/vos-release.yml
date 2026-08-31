@@ -34,6 +34,7 @@ jobs:
           npm ci
           npm run sync:mediapipe
           npm run verify:server-tool-catalog
+          npm run verify:vos-isolation
           npx tsc -b
           npx tsx desktop/embedded-port.verify.ts
 

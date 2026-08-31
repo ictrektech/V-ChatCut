@@ -1,9 +1,9 @@
-ARG NODE_BASE_IMAGE=node:24-bookworm-slim
+ARG NODE_BASE_IMAGE=swr.cn-southwest-2.myhuaweicloud.com/ictrek/node:arm_24-bookworm-slim
 
 FROM ${NODE_BASE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
 ARG VITE_BASE_PATH=/app/com.ictrek.v-chatcut/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
@@ -26,11 +26,18 @@ ENV NODE_ENV=production \
     CC_BROWSER_EXECUTABLE=/usr/bin/chromium \
     CC_RENDER_GL=swangle
 WORKDIR /app
-RUN apt-get update \
+ARG DEBIAN_MIRROR=http://repo.huaweicloud.com/debian
+ARG DEBIAN_SECURITY_MIRROR=http://repo.huaweicloud.com/debian-security
+RUN sed -i \
+      -e "s|http://deb.debian.org/debian-security|${DEBIAN_SECURITY_MIRROR}|g" \
+      -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+      /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates chromium curl dumb-init ffmpeg fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev \
+    && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/vos-dist ./vos-dist
 COPY assets ./assets
@@ -42,7 +49,7 @@ COPY shared ./shared
 COPY skills ./skills
 COPY src ./src
 COPY tsconfig*.json ./
-RUN mkdir -p /data/media/uploads && chown -R node:node /data /app
+RUN mkdir -p /data/media/uploads && chown -R node:node /data
 USER node
 EXPOSE 5199
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

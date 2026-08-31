@@ -40,8 +40,8 @@ export interface PruneSemanticResult {
   staleSourceRemoved: boolean;
 }
 
-let connection: DatabaseSync | null = null;
-let extensionFailed = false;
+const connections = new Map<string, DatabaseSync>();
+const failedPaths = new Set<string>();
 
 /** Whether server-side semantic vectors are usable right now (lazy init). */
 export function semanticVectorsAvailable(): boolean {
@@ -49,10 +49,12 @@ export function semanticVectorsAvailable(): boolean {
 }
 
 function openConnection(): DatabaseSync | null {
-  if (connection) return connection;
-  if (extensionFailed || !sqliteStoreEnabled()) return null;
+  if (!sqliteStoreEnabled()) return null;
+  const path = storePath();
+  const existing = connections.get(path);
+  if (existing) return existing;
+  if (failedPaths.has(path)) return null;
   try {
-    const path = storePath();
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path, { allowExtension: true });
     db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
@@ -61,20 +63,20 @@ function openConnection(): DatabaseSync | null {
       embedding float[${VEC_DIMENSION}], scope_id text, asset_id text, sample_time float,
       source_revision text, scene_id text, scene_start float, scene_end float, model_version text
     )`);
-    connection = db;
+    connections.set(path, db);
     return db;
   } catch {
     // Extension missing / unsupported platform → degrade to browser-side index.
-    extensionFailed = true;
+    failedPaths.add(path);
     return null;
   }
 }
 
 /** Close the connection (verify isolation / profile switches). */
 export function resetSemanticVectorsForTests(): void {
-  connection?.close();
-  connection = null;
-  extensionFailed = false;
+  for (const connection of connections.values()) connection.close();
+  connections.clear();
+  failedPaths.clear();
 }
 
 function requireConnection(): DatabaseSync {

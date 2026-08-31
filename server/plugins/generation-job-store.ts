@@ -27,33 +27,63 @@ import type {
   GenerationRetentionGuard,
 } from './generation-job-types.ts';
 
-export const jobs = new Map<string, GenerationJob>();
+const jobMaps = new Map<string, Map<string, GenerationJob>>();
+function activeJobs(): Map<string, GenerationJob> {
+  const root = runtimeProfile().rootDir;
+  let map = jobMaps.get(root);
+  if (!map) {
+    map = new Map();
+    jobMaps.set(root, map);
+  }
+  return map;
+}
+/** Map-compatible request-scoped view. AsyncLocalStorage keeps the originating
+ * VOS user attached to provider callbacks and expiry timers. */
+export const jobs = new Proxy(new Map<string, GenerationJob>(), {
+  get(_target, property) {
+    const map = activeJobs();
+    const value = Reflect.get(map, property, map) as unknown;
+    return typeof value === 'function' ? value.bind(map) : value;
+  },
+});
 export const resumers = new Map<string, GenerationJobResumer>();
 const cleanupPolicyHandlers = new Map<string, GenerationCleanupPolicyHandler>();
 const retentionGuards = new Map<string, GenerationRetentionGuard>();
 const MAX_JOB_AGE_MS = 60 * 60_000;
-const STORE_PATH = runtimeProfile().generationJobStore;
-let persistenceHydrated = false;
-let persistenceQueue: Promise<void> = Promise.resolve();
-let persistenceMigrationGate: Promise<void> | null = null;
+interface PersistenceState {
+  hydrated: boolean;
+  queue: Promise<void>;
+  migrationGate: Promise<void> | null;
+}
+const persistenceStates = new Map<string, PersistenceState>();
+function persistenceState(): PersistenceState {
+  const root = runtimeProfile().rootDir;
+  let state = persistenceStates.get(root);
+  if (!state) {
+    state = { hydrated: false, queue: Promise.resolve(), migrationGate: null };
+    persistenceStates.set(root, state);
+  }
+  return state;
+}
 registerStorageMigrationBarrier(async () => {
+  const state = persistenceState();
   // Before hydration, only drain existing writes: writing the empty in-memory
   // map would destroy the configured legacy ledger before it is imported.
   // Once hydrated, persist the current in-memory snapshot as the migration
   // boundary, then wait until no later queued write exists.
-  if (persistenceHydrated) await persistJobs();
+  if (state.hydrated) await persistJobs();
   let observed: Promise<void>;
   do {
-    observed = persistenceQueue;
+    observed = state.queue;
     await observed;
-  } while (observed !== persistenceQueue);
+  } while (observed !== state.queue);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  persistenceMigrationGate = gate;
+  state.migrationGate = gate;
   return () => {
-    if (persistenceMigrationGate === gate) persistenceMigrationGate = null;
+    if (state.migrationGate === gate) state.migrationGate = null;
     release();
   };
 });
@@ -86,20 +116,22 @@ function persistedRows(): GenerationJobSnapshot[] {
 }
 
 export function persistJobs(): Promise<void> {
-  const write = persistenceQueue.catch(() => undefined).then(async () => {
-    const migrationGate = persistenceMigrationGate;
+  const state = persistenceState();
+  const storePath = runtimeProfile().generationJobStore;
+  const write = state.queue.catch(() => undefined).then(async () => {
+    const migrationGate = state.migrationGate;
     if (migrationGate) await migrationGate;
     if (sqliteStoreEnabled()) {
       // SQLite backend: the whole jobs snapshot lives under one kv key.
       await sqliteWriteEntry(GENERATION_JOBS_KV_KEY, { version: 1, jobs: persistedRows() });
       return;
     }
-    await mkdir(dirname(STORE_PATH), { recursive: true });
-    const temporary = `${STORE_PATH}.${process.pid}.${randomUUID()}.tmp`;
+    await mkdir(dirname(storePath), { recursive: true });
+    const temporary = `${storePath}.${process.pid}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify({ version: 1, jobs: persistedRows() }), 'utf8');
-    await rename(temporary, STORE_PATH);
+    await rename(temporary, storePath);
   });
-  persistenceQueue = write.then(() => undefined, () => undefined);
+  state.queue = write.then(() => undefined, () => undefined);
   return write;
 }
 
@@ -152,6 +184,8 @@ function normalizePersistedJob(value: unknown): GenerationJob | null {
 }
 
 export async function loadPersistedJobs(): Promise<void> {
+  const state = persistenceState();
+  const storePath = runtimeProfile().generationJobStore;
   await initializeSqliteProjectStore();
   let parsed: { version?: unknown; jobs?: unknown } | null = null;
   if (sqliteStoreEnabled()) {
@@ -161,13 +195,13 @@ export async function loadPersistedJobs(): Promise<void> {
     }
   } else {
     try {
-      parsed = JSON.parse(await readFile(STORE_PATH, 'utf8')) as { version?: unknown; jobs?: unknown };
+      parsed = JSON.parse(await readFile(storePath, 'utf8')) as { version?: unknown; jobs?: unknown };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
   if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
-    persistenceHydrated = true;
+    state.hydrated = true;
     return;
   }
   for (const value of parsed.jobs) {
@@ -177,7 +211,7 @@ export async function loadPersistedJobs(): Promise<void> {
     if (job.timestamps.acceptedAt) job.acceptance?.resolve(acceptanceOf(job));
     if (TERMINAL.has(job.status)) scheduleExpiry(job);
   }
-  persistenceHydrated = true;
+  state.hydrated = true;
 }
 
 export function normalizeRetentionMs(value: number | undefined): number {

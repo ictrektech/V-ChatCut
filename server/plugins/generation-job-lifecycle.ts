@@ -30,12 +30,17 @@ import {
   resumers,
   scheduleExpiry,
 } from './generation-job-store.ts';
+import { runtimeProfile } from '../runtime-profile.ts';
 
-let loadPromise: Promise<void> | undefined;
+const loadPromises = new Map<string, Promise<void>>();
 
 export function initializeGenerationJobs(): Promise<void> {
-  if (!loadPromise) loadPromise = loadPersistedJobs().then(resumeRestoredJobs);
-  return loadPromise;
+  const root = runtimeProfile().rootDir;
+  const existing = loadPromises.get(root);
+  if (existing) return existing;
+  const pending = loadPersistedJobs().then(resumeRestoredJobs);
+  loadPromises.set(root, pending);
+  return pending;
 }
 
 function applyProgress(job: GenerationJob, next: GenerationJobProgress): void {

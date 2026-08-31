@@ -6,6 +6,7 @@
 // lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
 // show and edit them.
 import { readFile } from "node:fs/promises";
+import { parse as parseDotenv } from "dotenv";
 import { atomicWriteFile } from "./plugins/project-store-durable.ts";
 import { AI_SDK_BASE_URL_FORMAT, resolveLlmBaseUrl } from "./llm-config.ts";
 import { decodePersistedEnvValue, mergeEnvText } from "./env-text.ts";
@@ -22,9 +23,6 @@ import {
   serializeModelCapabilityOverrides,
   type ModelCapabilityOverride,
 } from "../shared/model-capabilities.ts";
-
-const ACTIVE_PROFILE = runtimeProfile();
-const ENV_PATH = ACTIVE_PROFILE.keystorePath;
 
 // Whitelist of settable env vars — mirrors what config/vite.config.ts reads. POST /api/keys
 // rejects anything outside this set so the endpoint can never write arbitrary env.
@@ -140,6 +138,11 @@ export const KEY_NAMES = [
   "R2_ENABLED",
   "R2_PRESIGN",
   "MEDIA_DIR",
+  "OPENCHATCUT_WEBDAV_URL",
+  "OPENCHATCUT_WEBDAV_USERNAME",
+  "OPENCHATCUT_WEBDAV_PASSWORD",
+  "OPENCHATCUT_IMMICH_URL",
+  "OPENCHATCUT_IMMICH_API_KEY",
   // ── model ids (non-secret config; raw values echoed via keyStatus().models) ──
   "LLM_PROVIDER",
   "LLM_MODEL",
@@ -249,6 +252,9 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "R2_ENABLED", // Cloud synchronization switch ('' default = enabled, '0' = disabled) - configuration is not credentials
   "R2_PRESIGN", // Browser pre-signed direct transmission ('' default = enabled, '0' = server-side write-through only)
   "MEDIA_DIR", // Asset saving directory (local path, '' = default public/media/uploads) - configuration is not credentials
+  "OPENCHATCUT_WEBDAV_URL",
+  "OPENCHATCUT_WEBDAV_USERNAME",
+  "OPENCHATCUT_IMMICH_URL",
   "OPENCHATCUT_SKILLS_DIR", // User skill files directory ('' = ~/.openchatcut/skills) - configuration is not credentials
   ...LLM_PROVIDER_PRESETS.flatMap((preset) => {
     const names = llmProviderConfigNames(preset.id);
@@ -256,8 +262,40 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   }),
 ]);
 
-const store = new Map<string, string>(); // current value per key (seed + runtime overrides)
-const envSeeded = new Set<string>(); // which keys came from .env.local / process.env at startup
+interface KeystoreState {
+  store: Map<string, string>;
+  envSeeded: Set<string>;
+  hydrated: boolean;
+}
+
+const baseState: KeystoreState = { store: new Map(), envSeeded: new Set(), hydrated: true };
+const profileStates = new Map<string, KeystoreState>();
+
+function activeState(): KeystoreState {
+  const profile = runtimeProfile();
+  if (profile.mode !== 'vos-user') return baseState;
+  let state = profileStates.get(profile.rootDir);
+  if (!state) {
+    state = {
+      store: new Map(baseState.store),
+      envSeeded: new Set(baseState.envSeeded),
+      hydrated: false,
+    };
+    // Connector identities belong to the authenticated VOS user. Deployment
+    // values may provide endpoint defaults, but must never provide shared user
+    // credentials to every account.
+    for (const name of [
+      'OPENCHATCUT_WEBDAV_USERNAME',
+      'OPENCHATCUT_WEBDAV_PASSWORD',
+      'OPENCHATCUT_IMMICH_API_KEY',
+    ]) {
+      state.store.delete(name);
+      state.envSeeded.delete(name);
+    }
+    profileStates.set(profile.rootDir, state);
+  }
+  return state;
+}
 
 function normalizeStoredValue(name: string, raw: unknown): string {
   const value = String(raw ?? "").trim();
@@ -266,7 +304,8 @@ function normalizeStoredValue(name: string, raw: unknown): string {
     : value;
 }
 
-function seedLegacyModelCapabilities(env: Record<string, string>): void {
+function seedLegacyModelCapabilities(env: Record<string, string>, state: KeystoreState): void {
+  const { store, envSeeded } = state;
   if (store.has(MODEL_CAPABILITY_OVERRIDES_KEY)) return;
   const records: ModelCapabilityOverride[] = [];
   for (const preset of LLM_PROVIDER_PRESETS) {
@@ -290,6 +329,7 @@ function seedLegacyModelCapabilities(env: Record<string, string>): void {
 
 /** Seed the store from Vite's loaded env (+ process.env fallback). Call once at startup. */
 export function seedKeystore(env: Record<string, string>): void {
+  const { store, envSeeded } = baseState;
   for (const name of KEY_NAMES) {
     const raw = env[name] ?? process.env[name] ?? "";
     try {
@@ -311,7 +351,27 @@ export function seedKeystore(env: Record<string, string>): void {
     store.set(target, value);
     envSeeded.add(target);
   }
-  seedLegacyModelCapabilities(env);
+  seedLegacyModelCapabilities(env, baseState);
+}
+
+/** Load the current VOS user's private overrides after authentication. */
+export async function hydrateKeystoreForCurrentProfile(): Promise<void> {
+  const profile = runtimeProfile();
+  const state = activeState();
+  if (profile.mode !== 'vos-user' || state.hydrated) return;
+  const source = await readFile(profile.keystorePath, 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  });
+  const parsed = parseDotenv(source);
+  for (const name of KEY_NAMES) {
+    if (!Object.hasOwn(parsed, name)) continue;
+    const value = normalizeStoredValue(name, parsed[name]);
+    if (value) state.store.set(name, value);
+    else state.store.delete(name);
+    state.envSeeded.delete(name);
+  }
+  state.hydrated = true;
 }
 
 /**
@@ -350,7 +410,7 @@ export function planLegacyLlmMigration(
 
 /** Live value for a key (runtime override wins over the .env.local seed). '' if unset. */
 export function getKey(name: KeyName): string {
-  return store.get(name) ?? "";
+  return activeState().store.get(name) ?? "";
 }
 
 // Capability booleans derived from current key presence — SAME logic as config/vite.config.ts
@@ -434,6 +494,7 @@ export interface KeyStatus {
  * booleans + source only. Non-secret model/routing values are echoed raw in `models`
  * ('' when unset); the `keys` boolean map still covers every whitelisted name. */
 export function keyStatus(): KeyStatus {
+  const { envSeeded } = activeState();
   const keys: Record<string, KeyState> = {};
   const models: Record<string, string> = {};
   for (const name of KEY_NAMES) {
@@ -450,6 +511,9 @@ export function keyStatus(): KeyStatus {
 /** Apply key edits from the settings UI: validate, update memory, persist to .env.local.
  * Empty value clears a key. Values containing newlines are rejected. Unknown names ignored. */
 export async function setKeys(patch: Record<string, unknown>): Promise<void> {
+  const profile = runtimeProfile();
+  const state = activeState();
+  const { store, envSeeded } = state;
   const clean = new Map<string, string>();
   for (const [name, raw] of Object.entries(patch)) {
     if (!SETTABLE.has(name)) continue; // whitelist
@@ -465,15 +529,15 @@ export async function setKeys(patch: Record<string, unknown>): Promise<void> {
       clean.get("LLM_BASE_URL") ? AI_SDK_BASE_URL_FORMAT : "",
     );
   }
-  const existing = await readFile(ENV_PATH, "utf8").catch(
+  const existing = await readFile(profile.keystorePath, "utf8").catch(
     (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") return "";
       throw err;
     },
   );
-  const isolated = isIsolatedDevProfile(ACTIVE_PROFILE);
+  const isolated = isIsolatedDevProfile(profile) || profile.mode === 'vos-user';
   const merged = mergeEnvText(existing, clean, isolated);
-  await atomicWriteFile(ENV_PATH, merged, { mode: 0o600 });
+  await atomicWriteFile(profile.keystorePath, merged, { mode: 0o600 });
   for (const [name, v] of clean) {
     if (v) {
       store.set(name, v);

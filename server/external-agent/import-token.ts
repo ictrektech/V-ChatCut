@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { safeSourceFilename } from '../../src/media/sourceFilename.ts';
 import { externalUploadMediaType } from '../../src/media/uploadMediaType.ts';
+import { currentVOSUser, type VOSUserContext } from '../vos-user-context.ts';
 
 export type ImportUploadMethod = 'POST' | 'PUT';
 export type ImportAssetType = 'audio' | 'gif' | 'image' | 'svg' | 'video';
@@ -136,11 +137,19 @@ export function parseImportTokenScope(value: Record<string, unknown>): ImportTok
   return scope;
 }
 const importTokens = new ImportTokenRegistry();
+const importTokenOwners = new Map<string, VOSUserContext>();
 export function mintImportToken(scope: ImportTokenScope): ImportTokenMint {
-  return importTokens.mint(scope);
+  const minted = importTokens.mint(scope);
+  const owner = currentVOSUser();
+  if (owner) {
+    importTokenOwners.set(minted.token, owner);
+    const timer = setTimeout(() => importTokenOwners.delete(minted.token), Math.max(1, minted.expiresAt - Date.now()));
+    timer.unref();
+  }
+  return minted;
 }
 export function mintImportUpload(value: Record<string, unknown>) {
-  const scope = parseImportTokenScope(value); const minted = importTokens.mint(scope);
+  const scope = parseImportTokenScope(value); const minted = mintImportToken(scope);
   return {
     uploadUrl: importUploadUrl(scope, minted.token), expiresAt: minted.expiresAt,
     expiresInSeconds: Math.max(0, Math.ceil((minted.expiresAt - Date.now()) / 1_000)), allowedMethods: [scope.method],
@@ -167,12 +176,19 @@ function validHandoffQuery(query: URLSearchParams): boolean {
 }
 export function authorizeImportUpload(url: URL, method: string | undefined, contentType: string | undefined): ImportTokenConsumeResult {
   if (!url.searchParams.has('handoff') || !validHandoffQuery(url.searchParams)) return { status: 'invalid' };
-  return importTokens.consume(url.searchParams.get('handoff') ?? '', {
+  const token = url.searchParams.get('handoff') ?? '';
+  const result = importTokens.consume(token, {
     sessionId: url.searchParams.get('sessionId') ?? '',
     assetId: url.searchParams.get('assetId') ?? '', assetType: url.searchParams.get('assetType') as ImportAssetType,
     filename: url.searchParams.get('name') ?? '', projectId: url.searchParams.get('projectId') ?? '',
     method: method as ImportUploadMethod, contentType: contentType ?? '',
   });
+  importTokenOwners.delete(token);
+  return result;
+}
+
+export function importTokenVOSUser(token: string): VOSUserContext | undefined {
+  return importTokenOwners.get(token);
 }
 
 export interface UploadReceiptValue {

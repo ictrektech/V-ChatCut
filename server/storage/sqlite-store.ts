@@ -38,11 +38,30 @@ export interface SQLiteMigrationStatus {
   error?: string;
 }
 
-let database: DatabaseSync | null = null;
-let databaseHadKvTableAtOpen = false;
-let migrationTail: Promise<void> = Promise.resolve();
-let processPhase: SQLiteMigrationPhase = 'legacy';
-let migrationError: string | undefined;
+interface ProfileDatabaseState {
+  database: DatabaseSync | null;
+  databaseHadKvTableAtOpen: boolean;
+  migrationTail: Promise<void>;
+  processPhase: SQLiteMigrationPhase;
+  migrationError?: string;
+}
+
+const profileStates = new Map<string, ProfileDatabaseState>();
+
+function profileState(): ProfileDatabaseState {
+  const path = storePath();
+  let state = profileStates.get(path);
+  if (!state) {
+    state = {
+      database: null,
+      databaseHadKvTableAtOpen: false,
+      migrationTail: Promise.resolve(),
+      processPhase: 'legacy',
+    };
+    profileStates.set(path, state);
+  }
+  return state;
+}
 
 type MigrationBarrierRelease = () => void | Promise<void>;
 type MigrationBarrier = () => void | MigrationBarrierRelease | Promise<void | MigrationBarrierRelease>;
@@ -65,7 +84,8 @@ export function storePath(): string {
 }
 
 function openDatabase(): DatabaseSync {
-  if (database) return database;
+  const state = profileState();
+  if (state.database) return state.database;
   const path = storePath();
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path);
@@ -73,7 +93,7 @@ function openDatabase(): DatabaseSync {
   const existingKvTable = db.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'kv'
   `).get() as { name?: string } | undefined;
-  databaseHadKvTableAtOpen = existingKvTable?.name === 'kv';
+  state.databaseHadKvTableAtOpen = existingKvTable?.name === 'kv';
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = FULL;
@@ -82,7 +102,7 @@ function openDatabase(): DatabaseSync {
       v TEXT NOT NULL
     );
   `);
-  database = db;
+  state.database = db;
   return db;
 }
 
@@ -107,9 +127,10 @@ export function sqliteStoreEnabled(): boolean {
 }
 
 async function withMigrationLease<T>(task: () => T | Promise<T>): Promise<T> {
-  const predecessor = migrationTail;
+  const state = profileState();
+  const predecessor = state.migrationTail;
   let release!: () => void;
-  migrationTail = new Promise<void>((resolve) => {
+  state.migrationTail = new Promise<void>((resolve) => {
     release = resolve;
   });
   await predecessor.catch(() => undefined);
@@ -121,8 +142,9 @@ async function withMigrationLease<T>(task: () => T | Promise<T>): Promise<T> {
 }
 
 async function migrateUnderLease(): Promise<ImportSummary> {
-  processPhase = 'migrating';
-  migrationError = undefined;
+  const state = profileState();
+  state.processPhase = 'migrating';
+  state.migrationError = undefined;
   const releases: MigrationBarrierRelease[] = [];
   try {
     for (const barrier of migrationBarriers) {
@@ -133,16 +155,16 @@ async function migrateUnderLease(): Promise<ImportSummary> {
     // drain. Phase-1 authority upgrades only missing auxiliary rows and never
     // replays project/chat JSON.
     const db = openDatabase();
-    const summary = ensureJsonImported(db, runtimeProfile(), databaseHadKvTableAtOpen);
+    const summary = ensureJsonImported(db, runtimeProfile(), state.databaseHadKvTableAtOpen);
     const receipt = synchronizeImportReceiptSidecar(db, runtimeProfile());
     if (!receipt || receipt.phase < RECEIPT_PHASE) {
       throw new Error('SQLite migration completed without a phase-2 authoritative receipt');
     }
-    processPhase = 'complete';
+    state.processPhase = 'complete';
     return summary;
   } catch (error) {
-    processPhase = 'failed';
-    migrationError = error instanceof Error ? error.message : String(error);
+    state.processPhase = 'failed';
+    state.migrationError = error instanceof Error ? error.message : String(error);
     throw error;
   } finally {
     for (const release of releases.reverse()) {
@@ -171,16 +193,17 @@ export function runStorageMigration(): Promise<ImportSummary> {
  */
 export function initializeSqliteProjectStore(): Promise<SQLiteMigrationStatus> {
   return withMigrationLease(async () => {
+    const state = profileState();
     const env = process.env[SQLITE_STORE_ENV];
     if (env !== undefined && env !== '1') {
-      processPhase = 'legacy';
-      migrationError = undefined;
+      state.processPhase = 'legacy';
+      state.migrationError = undefined;
       return sqliteMigrationStatus();
     }
     const receipt = authoritativeReceipt();
     if (receipt && receipt.phase >= RECEIPT_PHASE) {
-      processPhase = 'complete';
-      migrationError = undefined;
+      state.processPhase = 'complete';
+      state.migrationError = undefined;
       synchronizeImportReceiptSidecar(openDatabase(), runtimeProfile());
       return sqliteMigrationStatus();
     }
@@ -250,6 +273,7 @@ export function cleanupLegacyJson(): CleanupResult {
 
 /** Migration status for the UI. Receipt/state comes from SQLite, not sidecar. */
 export function sqliteMigrationStatus(): SQLiteMigrationStatus {
+  const state = profileState();
   const receipt = authoritativeReceipt();
   const dir = runtimeProfile().projectStore.directory;
   let jsonKeyCount = 0;
@@ -270,8 +294,8 @@ export function sqliteMigrationStatus(): SQLiteMigrationStatus {
   const complete = receipt !== null && receipt.phase >= RECEIPT_PHASE;
   const phase: SQLiteMigrationPhase = complete
     ? 'complete'
-    : processPhase === 'migrating' || processPhase === 'failed'
-      ? processPhase
+    : state.processPhase === 'migrating' || state.processPhase === 'failed'
+      ? state.processPhase
       : 'legacy';
   return {
     enabled: sqliteStoreEnabled(),
@@ -279,18 +303,14 @@ export function sqliteMigrationStatus(): SQLiteMigrationStatus {
     receipt: complete ? { count: receipt.count, importedAt: receipt.importedAt } : null,
     jsonKeyCount,
     sqliteKeyCount,
-    ...(phase === 'failed' && migrationError ? { error: migrationError } : {}),
+    ...(phase === 'failed' && state.migrationError ? { error: state.migrationError } : {}),
   };
 }
 
 /** Close the connection and reset process state (verifier/profile isolation). */
 export function resetSqliteStoreForTests(): void {
-  database?.close();
-  database = null;
-  databaseHadKvTableAtOpen = false;
-  migrationTail = Promise.resolve();
-  processPhase = 'legacy';
-  migrationError = undefined;
+  for (const state of profileStates.values()) state.database?.close();
+  profileStates.clear();
 }
 
 const encode = (value: unknown): string => JSON.stringify(value);

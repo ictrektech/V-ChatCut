@@ -297,6 +297,8 @@ npm run desktop:dev
 
 VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
 
+VOS 包启用 OIDC Fastpath 用户验证，并按 OIDC `sub` 隔离服务端工程、媒体、任务、连接凭证及浏览器存储。数据目录为 `/data/users/<subject-hash>/`。VOS exposed 是应用级视图，默认不作为多用户素材来源；仅公共素材库可由管理员显式开启。旧共享数据只能由 VOS 管理员通过 `POST /api/auth/claim-legacy-data` 主动认领，且不会自动暴露给其他用户。
+
 ---
 
 ## 项目状态

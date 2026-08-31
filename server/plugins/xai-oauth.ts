@@ -10,6 +10,7 @@ import {
   logoutXaiOauth,
   xaiOauthStatus,
 } from '../xai-oauth-session.ts';
+import { vosAuthEnabled } from '../vos-user-context.ts';
 
 const BODY_LIMIT = 16 * 1024;
 
@@ -46,11 +47,14 @@ export function xaiOauthPlugin(): Plugin {
   return {
     name: 'openchatcut-xai-oauth',
     configureServer(server) {
-      void initXaiOauth().catch((error) => {
-        server.config.logger.error(`[xai-oauth] ${messageOf(error)}`);
-      });
+      if (!vosAuthEnabled()) {
+        void initXaiOauth().catch((error) => {
+          server.config.logger.error(`[xai-oauth] ${messageOf(error)}`);
+        });
+      }
       server.middlewares.use('/api/xai-oauth', async (req, res) => {
         try {
+          await initXaiOauth();
           const url = new URL(req.url ?? '/', 'http://localhost');
           const write = req.method === 'POST';
           // Reads only report session shape (never token values); writes
@@ -64,6 +68,10 @@ export function xaiOauthPlugin(): Plugin {
             return;
           }
           if (write && url.pathname === '/import') {
+            if (vosAuthEnabled()) {
+              sendJson(res, 403, { error: 'VOS users cannot import the host Grok CLI session' });
+              return;
+            }
             await readBody(req);
             sendJson(res, 200, await importXaiOauthFromCli());
             return;

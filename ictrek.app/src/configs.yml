@@ -39,27 +39,6 @@ configs:
       en: Optional WebDAV root URL for browsing and importing media from the media pool.
     default: ""
 
-  - name: OPENCHATCUT_WEBDAV_USERNAME
-    type: string
-    title:
-      zh-CN: WebDAV 用户名
-      en: WebDAV Username
-    description:
-      zh-CN: WebDAV 账号；匿名服务可留空。
-      en: WebDAV account name. Leave empty for anonymous access.
-    default: ""
-
-  - name: OPENCHATCUT_WEBDAV_PASSWORD
-    type: string
-    secret: true
-    title:
-      zh-CN: WebDAV 密码
-      en: WebDAV Password
-    description:
-      zh-CN: WebDAV 账号密码；由 VOS 作为敏感配置保存。
-      en: WebDAV account password, stored by VOS as a secret configuration value.
-    default: ""
-
   - name: OPENCHATCUT_IMMICH_URL
     type: string
     title:
@@ -70,13 +49,22 @@ configs:
       en: Immich service URL. Leave empty to use the VOS gateway, or enter a standalone address such as http://192.168.1.10:2283. Do not append /api.
     default: ""
 
-  - name: OPENCHATCUT_IMMICH_API_KEY
-    type: string
-    secret: true
+  - name: OPENCHATCUT_VOS_SHARED_EXPOSED_ENABLED
+    type: boolean
     title:
-      zh-CN: AI 相册 API Key
-      en: AI Album API Key
+      zh-CN: 共享 VOS 授权目录
+      en: Shared VOS Exposed Directory
     description:
-      zh-CN: 用于搜索和读取当前用户有权访问的 Immich 素材。
-      en: Immich API key used to search and read media available to its owner.
-    default: ""
+      zh-CN: 默认关闭以避免多用户互相看到授权目录。仅当挂载内容是所有 V-ChatCut 用户都可访问的公共素材库时开启。
+      en: Disabled by default to prevent cross-user browsing. Enable only when the mounted content is a public library shared by every V-ChatCut user.
+    default: false
+
+  - name: OPENCHATCUT_VOS_OIDC_USERINFO_URL
+    type: string
+    title:
+      zh-CN: VOS OIDC 用户信息地址
+      en: VOS OIDC Userinfo URL
+    description:
+      zh-CN: 后端校验 VOS Fastpath access token 使用的 /v1000/oauth2/userinfo 地址。
+      en: Reachable /v1000/oauth2/userinfo endpoint used to verify VOS Fastpath access tokens.
+    default: http://172.17.0.1:8105/v1000/oauth2/userinfo

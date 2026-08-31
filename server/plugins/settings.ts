@@ -39,6 +39,12 @@ export function assertProfileSensitiveSettingsPatch(
   patch: Readonly<Record<string, unknown>>,
   profile: RuntimeProfile = runtimeProfile(),
 ): void {
+  if (profile.mode === 'vos-user') {
+    if (Object.hasOwn(patch, DATA_DIR_ENV) || Object.hasOwn(patch, 'MEDIA_DIR')) {
+      throw new Error('VOS user storage directories are managed by V-ChatCut and cannot be changed');
+    }
+    return;
+  }
   if (!isIsolatedDevProfile(profile)) return;
   if (Object.hasOwn(patch, 'MEDIA_DIR')) {
     throw new Error('MEDIA_DIR cannot be changed while an isolated development profile is active');
@@ -85,7 +91,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 function settingsBody(restartRequired = false) {
   const profile = runtimeProfile();
   const status = keyStatus();
-  const configured = readDataDirPointer() ?? '';
+  const configured = profile.mode === 'vos-user' ? '' : readDataDirPointer() ?? '';
   return {
     ...status,
     // The storage root is configuration, not a credential: echo it raw so the

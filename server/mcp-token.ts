@@ -11,6 +11,8 @@ export interface McpTokenLocation {
   readonly home?: string;
   /** Isolated dev profiles keep their own token so checkouts stay independent. */
   readonly profileId?: string;
+  /** VOS user profiles already live in an access-controlled private root. */
+  readonly rootDir?: string;
 }
 
 /**
@@ -20,10 +22,10 @@ export interface McpTokenLocation {
  * secret must not ride a sync service onto other machines. Same reasoning as
  * the data-dir pointer file itself.
  */
-export function mcpTokenPath({ home = homedir(), profileId }: McpTokenLocation = {}): string {
-  const root = profileId
+export function mcpTokenPath({ home = homedir(), profileId, rootDir }: McpTokenLocation = {}): string {
+  const root = rootDir ?? (profileId
     ? join(home, '.openchatcut', 'dev-profiles', profileId)
-    : join(home, '.openchatcut');
+    : join(home, '.openchatcut'));
   return join(root, 'mcp-token');
 }
 

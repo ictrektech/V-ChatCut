@@ -298,6 +298,8 @@ The desktop app uses an Electron shell with the same embedded services. The web 
 
 The VOS application definition lives in `ictrek.app/`, and container build files live in `vos_docker/`. The frontend has AMD64 and ARM64 images only. The backend provides six profiles: `amd-with-cuda`, `amd-without-cuda`, `arm-with-cuda`, `arm-without-cuda`, `l4t`, and `thor-spark`. CUDA profiles prefer NVENC and automatically fall back to libx264 when hardware encoding is unavailable. Use `vos_docker/build_image.sh --sheet <Feishu-sheet>` on each matching build host, then run `ictrek.app/scripts/update_version.sh patch` to trigger the VOS pull-package workflow.
 
+The VOS package uses the OIDC Fastpath and partitions server-side projects, media, jobs, connector credentials, and browser storage by the immutable OIDC `sub` under `/data/users/<subject-hash>/`. The application-wide VOS exposed view is disabled as a multi-user source by default and should be enabled only for a public library. Legacy shared data requires an explicit VOS administrator call to `POST /api/auth/claim-legacy-data` and is never exposed automatically.
+
 ---
 
 ## Project Status

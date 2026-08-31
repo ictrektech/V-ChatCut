@@ -15,14 +15,16 @@ Only AMD64 and ARM64 frontend images are built. Every ARM64 backend profile reus
 
 ## Data
 
-Projects, uploaded media, model caches, settings, and export state are stored under the VOS private application `data/` directory. Back up this directory before uninstalling when required.
+V-ChatCut authenticates the current user through the VOS OIDC Fastpath and uses the immutable OIDC `sub` claim to partition projects, uploaded media, settings, generation jobs, export state, localStorage, sessionStorage, and IndexedDB under `data/users/<subject-hash>/`.
+
+Legacy data at the shared `data/` root is not exposed automatically. A VOS administrator can explicitly call `POST /api/auth/claim-legacy-data` to claim it once; the operation refuses a non-empty target and requires an app restart.
 
 ### Importing media
 
 - **Computer and phone**: upload from the browser or use the temporary phone upload channel.
-- **VOS storage / Samba**: grant a user or public directory to V-ChatCut in VOS, then choose it from “Import from VOS / WebDAV / AI Album”. VOS owns the Samba mount and authorization; V-ChatCut does not store SMB credentials.
-- **WebDAV**: configure the optional WebDAV URL and account during installation or upgrade.
-- **AI Album**: configure an Immich URL and API key to browse recent assets or use semantic search.
+- **VOS storage / Samba**: the exposed view is application-wide and is disabled by default in multi-user mode. Enable “Shared VOS Exposed Directory” only for a public library available to every V-ChatCut user.
+- **WebDAV**: deployment may provide an endpoint default; every VOS user saves their own account and password in V-ChatCut Settings.
+- **AI Album**: deployment may provide an Immich endpoint default; every VOS user saves their own API key in V-ChatCut Settings.
 
 Selected external media is copied into V-ChatCut's private `/media/uploads/` area. Existing projects therefore remain usable after a directory grant is revoked or a remote service goes offline, at the cost of additional application storage.
 

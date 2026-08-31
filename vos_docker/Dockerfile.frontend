@@ -1,10 +1,10 @@
-ARG NODE_BASE_IMAGE=node:24-alpine
-ARG NGINX_BASE_IMAGE=nginx:1.29-alpine
+ARG NODE_BASE_IMAGE
+ARG NGINX_BASE_IMAGE
 
 FROM ${NODE_BASE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
 ARG VITE_BASE_PATH=/app/com.ictrek.v-chatcut/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}

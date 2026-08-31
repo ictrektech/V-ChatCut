@@ -1,27 +1,41 @@
 import './index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App';
-import { TranscriptWindowRoot } from './media/TranscriptWindowRoot';
 import { loadProjectFonts } from './fonts/googleFonts';
 import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
+import { bootstrapVOSSession } from './vos/auth';
+import { installVOSStoragePartition } from './vos/storagePartition';
 
-// Inject skin variables and apply persistent skin before rendering to avoid flashing the default color in the first frame.
-initSkins();
+function requireRoot(): HTMLElement {
+  const value = document.getElementById('root');
+  if (!value) throw new Error('no #root');
+  return value;
+}
 
-// Register local font faces; TimelineComposition loads used Google faces on demand.
-loadProjectFonts();
+const root = requireRoot();
 
-// The installed content plugin is registered in the runtime registry (visible to resource library/agent). Timeline rendering does not wait for it —
-// The applied content has been snapshotted into state, see docs/plugin-system-design.md.
-void hydratePlugins().catch(() => {});
+async function start(): Promise<void> {
+  const vosUser = await bootstrapVOSSession();
+  if (vosUser) installVOSStoragePartition(vosUser.namespace);
 
-const root = document.getElementById('root');
-if (!root) throw new Error('no #root');
-const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
-createRoot(root).render(
-  <StrictMode>
-    {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
-  </StrictMode>,
-);
+  // Initialize persistence-aware modules only after the VOS storage partition exists.
+  initSkins();
+  loadProjectFonts();
+  void hydratePlugins().catch(() => {});
+  const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
+  const [{ default: App }, { TranscriptWindowRoot }] = await Promise.all([
+    import('./App'),
+    import('./media/TranscriptWindowRoot'),
+  ]);
+  createRoot(root).render(
+    <StrictMode>
+      {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
+    </StrictMode>,
+  );
+}
+
+void start().catch((error) => {
+  const message = error instanceof Error ? error.message : 'VOS 用户验证失败';
+  root.textContent = `V-ChatCut 无法启动：${message}`;
+});

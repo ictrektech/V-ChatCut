@@ -18,6 +18,8 @@ import { sanitizeFileName } from '../file-name.ts';
 import { enqueueUploadMutation, mimeFor, uploadDir } from '../media-dir.ts';
 import { maxUploadBytes, readBody, sendError, sendJson } from './upload-route-http.ts';
 import { streamUploadToFile } from './upload-stream.ts';
+import { getKey, type KeyName } from '../keystore.ts';
+import { vosAuthEnabled } from '../vos-user-context.ts';
 
 const API_PREFIX = '/api/media-sources';
 const MAX_LIST_ITEMS = 500;
@@ -35,7 +37,8 @@ interface ImportCandidate {
 }
 
 function configured(name: string): string {
-  return process.env[name]?.trim() ?? '';
+  if (name === 'OPENCHATCUT_VOS_EXPOSED_ROOT') return process.env[name]?.trim() ?? '';
+  return getKey(name as KeyName).trim();
 }
 
 function isMediaName(name: string): boolean {
@@ -59,6 +62,12 @@ function parentPath(value: string): string | undefined {
 }
 
 async function vosRoot(): Promise<string | null> {
+  // VOS exposes an application-wide reconciled view. In a multi-user process
+  // it is safe only when the administrator explicitly declares it a shared
+  // source (typically a public directory); imported copies are still private.
+  if (vosAuthEnabled() && !/^(?:1|true|yes)$/i.test(process.env.OPENCHATCUT_VOS_SHARED_EXPOSED_ENABLED ?? '')) {
+    return null;
+  }
   const configuredRoot = configured('OPENCHATCUT_VOS_EXPOSED_ROOT') || '/exposed';
   try {
     const root = await realpath(configuredRoot);

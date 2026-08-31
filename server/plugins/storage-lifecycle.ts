@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import { initializeSqliteProjectStore } from '../storage/sqlite-store.ts';
+import { vosAuthEnabled } from '../vos-user-context.ts';
 
 /**
  * Resolve storage authority before feature plugins restore their persisted
@@ -10,6 +11,7 @@ export function storageLifecyclePlugin(): Plugin {
   return {
     name: 'openchatcut-storage-lifecycle',
     async configureServer(server) {
+      if (vosAuthEnabled()) return;
       try {
         const status = await initializeSqliteProjectStore();
         if (status.phase === 'failed') {

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { isSafeUploadName, uploadDir } from './media-dir.ts';
+import { currentVOSUser, runAsVOSUser, type VOSUserContext } from './vos-user-context.ts';
 
 const DEFAULT_SESSION_TTL_MS = 10 * 60_000;
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024 * 1024;
@@ -49,6 +50,7 @@ interface MobileUploadSession extends MobileUploadSessionSnapshot {
   closing: boolean;
   timer: NodeJS.Timeout;
   activeUploads: Set<Promise<void>>;
+  owner?: VOSUserContext;
 }
 
 export type MobilePageLocale = 'zh' | 'en' | 'it' | 'ru';
@@ -229,15 +231,18 @@ export class MobileUploadService {
     const token = randomBytes(24).toString('base64url');
     const expiresAt = Date.now() + this.options.sessionTtlMs;
     const urls = addresses.map((address) => `http://${address}:${this.port}/s/${token}`);
-    const timer = setTimeout(() => { void this.closeSession(id); }, this.options.sessionTtlMs);
+    const timer = setTimeout(() => { void this.closeSession(id, false); }, this.options.sessionTtlMs);
     timer.unref();
-    const session: MobileUploadSession = { id, token, locale, urls, expiresAt, files: [], closing: false, timer, activeUploads: new Set() };
+    const owner = currentVOSUser();
+    const session: MobileUploadSession = { id, token, locale, urls, expiresAt, files: [], closing: false, timer,
+      activeUploads: new Set(), ...(owner ? { owner } : {}) };
     this.sessions.set(id, session);
     return this.snapshot(session);
   }
 
   getSession(id: string): MobileUploadSessionSnapshot | null {
     const session = this.sessions.get(id);
+    if (session?.owner?.namespace !== currentVOSUser()?.namespace) return null;
     if (!session || session.expiresAt <= Date.now()) {
       if (session) void this.closeSession(id);
       return null;
@@ -245,9 +250,10 @@ export class MobileUploadService {
     return this.snapshot(session);
   }
 
-  async closeSession(id: string): Promise<MobileUploadSessionSnapshot | null> {
+  async closeSession(id: string, enforceOwner = true): Promise<MobileUploadSessionSnapshot | null> {
     const session = this.sessions.get(id);
     if (!session) return null;
+    if (enforceOwner && session.owner?.namespace !== currentVOSUser()?.namespace) return null;
     session.closing = true;
     clearTimeout(session.timer);
     await Promise.allSettled([...session.activeUploads]);
@@ -308,7 +314,9 @@ export class MobileUploadService {
       if (!session) { sendNotFound(res); return; }
       if (!match[2] && req.method === 'GET') { this.sendPage(res, session.locale); return; }
       if (match[2] && req.method === 'POST') {
-        const upload = this.receiveUpload(session, url, req, res);
+        const upload = session.owner
+          ? runAsVOSUser(session.owner, () => this.receiveUpload(session, url, req, res))
+          : this.receiveUpload(session, url, req, res);
         session.activeUploads.add(upload);
         try { await upload; } finally { session.activeUploads.delete(upload); }
         return;

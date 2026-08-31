@@ -190,6 +190,20 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { key: 'stock/unsplash', vendor: 'unsplash', title: 'Unsplash', fields: [secret('UNSPLASH_ACCESS_KEY', 'Access Key')] },
           { key: 'stock/freesound', vendor: 'freesound', title: 'Freesound', fields: [secret('FREESOUND_API_KEY', 'API Key')] },
         ] },
+      { key: 'remote-media', title: '远程素材', hint: '每个 VOS 用户单独保存自己的连接凭证。',
+        vendors: [
+          { key: 'remote-media/webdav', vendor: 'localdisk', title: 'WebDAV',
+            fields: [
+              text('OPENCHATCUT_WEBDAV_URL', 'WebDAV 地址'),
+              text('OPENCHATCUT_WEBDAV_USERNAME', '用户名'),
+              secret('OPENCHATCUT_WEBDAV_PASSWORD', '密码'),
+            ] },
+          { key: 'remote-media/immich', vendor: 'localdisk', title: 'AI 相册 · Immich',
+            fields: [
+              text('OPENCHATCUT_IMMICH_URL', 'Immich 地址'),
+              secret('OPENCHATCUT_IMMICH_API_KEY', 'API Key'),
+            ] },
+        ] },
       TRANSCRIPTION_SETTINGS_GROUP,
     ],
   },

@@ -106,13 +106,31 @@ for sheet in "${TARGET_SHEETS[@]}"; do
 done
 
 case "$(uname -m)" in
-  x86_64|amd64) HOST_ARCH=amd ;;
-  aarch64|arm64) HOST_ARCH=arm ;;
+  x86_64|amd64)
+    HOST_ARCH=amd
+    BUILD_HOST_ROLE=amd
+    ;;
+  aarch64|arm64)
+    HOST_ARCH=arm
+    device_model="$(tr -d '\0' </proc/device-tree/model 2>/dev/null || true)"
+    tegra_release="$(cat /etc/nv_tegra_release 2>/dev/null || true)"
+    if [[ "$device_model" == *Thor* || "$tegra_release" == *R39* ]]; then
+      BUILD_HOST_ROLE=thor
+    elif [[ "$tegra_release" == *R36* ]]; then
+      BUILD_HOST_ROLE=l4t
+    else
+      die "unsupported ARM build host: expected tc192/L4T R36 or tc229/Thor R39"
+    fi
+    ;;
   *) die "unsupported build-host architecture: $(uname -m)" ;;
 esac
 for sheet in "${TARGET_SHEETS[@]}"; do
   IFS='|' read -r _ _ _ target_arch <<< "$(sheet_spec "$sheet")"
   [[ "$target_arch" == "$HOST_ARCH" ]] || die "sheet ${sheet} requires a ${target_arch} build host, current host is ${HOST_ARCH}"
+  case "$BUILD_HOST_ROLE:$sheet" in
+    amd:AMD_with_cuda|amd:AMD_with_mxn100|l4t:ARM_without_cuda|l4t:l4t|thor:ARM_with_cuda|thor:thor_spark) ;;
+    *) die "sheet ${sheet} is not assigned to this ${BUILD_HOST_ROLE} build host" ;;
+  esac
 done
 
 require_cmd docker
@@ -121,9 +139,9 @@ docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 [[ -f "$FEISHU_HELPER" ]] || die "missing Feishu helper: $FEISHU_HELPER"
 
 DATE="$(date +%Y%m%d)"
-NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-node:24-bookworm-slim}"
-FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-node:24-alpine}"
-NGINX_BASE_IMAGE="${V_CHATCUT_NGINX_BASE_IMAGE:-nginx:1.29-alpine}"
+NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-bookworm-slim}"
+FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-alpine}"
+NGINX_BASE_IMAGE="${V_CHATCUT_NGINX_BASE_IMAGE:-${REGISTRY}/nginx:${HOST_ARCH}_1.29-alpine}"
 
 if contains frontend "${COMPONENTS[@]}"; then
   selected_arches=()
@@ -137,6 +155,7 @@ if contains frontend "${COMPONENTS[@]}"; then
     log "Build shared ${target_arch} frontend: ${image}"
     docker buildx build \
       --builder default \
+      --network host \
       --load \
       --provenance=false \
       --sbom=false \
@@ -166,6 +185,7 @@ if contains backend "${COMPONENTS[@]}"; then
     log "Build ${profile} backend: ${image}"
     docker buildx build \
       --builder default \
+      --network host \
       --load \
       --provenance=false \
       --sbom=false \

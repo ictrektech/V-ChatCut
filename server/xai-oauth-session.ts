@@ -17,7 +17,7 @@ import { runtimeProfile } from './runtime-profile.ts';
 export const XAI_OAUTH_ISSUER = 'https://auth.x.ai';
 const TOKEN_ENDPOINT = `${XAI_OAUTH_ISSUER}/oauth2/token`;
 const CLI_AUTH_JSON = join(homedir(), '.grok', 'auth.json');
-const SESSION_FILE = join(runtimeProfile().rootDir, 'xai-oauth-session.json');
+const sessionFile = () => join(runtimeProfile().rootDir, 'xai-oauth-session.json');
 const ACCESS_KEY = 'LLM_XAI_OAUTH_API_KEY';
 // The Grok CLI keys its session by "<issuer>::<client id>"; accept the
 // first-party issuer with any UUID-shaped public client id so a future CLI
@@ -106,53 +106,69 @@ function validSession(value: unknown): XaiSession | null {
 
 export function readSessionFile(): XaiSession | null {
   try {
-    return validSession(JSON.parse(readFileSync(SESSION_FILE, 'utf8')));
+    return validSession(JSON.parse(readFileSync(sessionFile(), 'utf8')));
   } catch {
     return null;
   }
 }
 
 export function persistSession(session: XaiSession): void {
-  const tmp = `${SESSION_FILE}.tmp`;
-  mkdirSync(dirname(SESSION_FILE), { recursive: true });
+  const file = sessionFile();
+  const tmp = `${file}.tmp`;
+  mkdirSync(dirname(file), { recursive: true });
   writeFileSync(tmp, JSON.stringify(session), { mode: 0o600 });
-  renameSync(tmp, SESSION_FILE);
-  chmodSync(SESSION_FILE, 0o600);
+  renameSync(tmp, file);
+  chmodSync(file, 0o600);
 }
 
 export function dropSessionFile(): void {
-  rmSync(SESSION_FILE, { force: true });
+  rmSync(sessionFile(), { force: true });
 }
 
-let current: XaiSession | null = null;
-let statusError = '';
-let timer: NodeJS.Timeout | null = null;
-let initStarted = false;
-let retryDelayMs = RETRY_MIN_MS;
-let lifecycleQueue: Promise<void> = Promise.resolve();
+interface OAuthState {
+  current: XaiSession | null;
+  statusError: string;
+  timer: NodeJS.Timeout | null;
+  initStarted: boolean;
+  retryDelayMs: number;
+  lifecycleQueue: Promise<void>;
+}
+const states = new Map<string, OAuthState>();
+function oauthState(): OAuthState {
+  const root = runtimeProfile().rootDir;
+  let state = states.get(root);
+  if (!state) {
+    state = { current: null, statusError: '', timer: null, initStarted: false,
+      retryDelayMs: RETRY_MIN_MS, lifecycleQueue: Promise.resolve() };
+    states.set(root, state);
+  }
+  return state;
+}
 
 function serializeLifecycle<T>(work: () => Promise<T>): Promise<T> {
-  const result = lifecycleQueue.then(work, work);
-  lifecycleQueue = result.then(() => undefined, () => undefined);
+  const state = oauthState();
+  const result = state.lifecycleQueue.then(work, work);
+  state.lifecycleQueue = result.then(() => undefined, () => undefined);
   return result;
 }
 
-function clearTimer(): void {
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
+function clearTimer(state = oauthState()): void {
+  if (state.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
   }
 }
 
 function armTimer(delayOverride?: number): void {
-  clearTimer();
-  if (!current || current.expiresAt <= 0) return;
+  const state = oauthState();
+  clearTimer(state);
+  if (!state.current || state.current.expiresAt <= 0) return;
   const delay = delayOverride
-    ?? Math.max(1_000, current.expiresAt - Date.now() - REFRESH_SKEW_MS);
-  timer = setTimeout(() => {
+    ?? Math.max(1_000, state.current.expiresAt - Date.now() - REFRESH_SKEW_MS);
+  state.timer = setTimeout(() => {
     void ensureFreshXaiOauth().catch(() => {});
   }, delay);
-  timer.unref();
+  state.timer.unref();
 }
 
 async function commitSession(next: XaiSession, previous: XaiSession | null): Promise<void> {
@@ -163,7 +179,7 @@ async function commitSession(next: XaiSession, previous: XaiSession | null): Pro
     await setKeys({ [ACCESS_KEY]: previous?.access ?? '' }).catch(() => undefined);
     throw error;
   }
-  current = next;
+  oauthState().current = next;
 }
 
 export async function refreshTokens(session: XaiSession): Promise<XaiSession> {
@@ -204,27 +220,29 @@ export async function refreshTokens(session: XaiSession): Promise<XaiSession> {
 }
 
 async function invalidateSession(): Promise<void> {
-  clearTimer();
-  current = null;
-  statusError = '登录会话已失效，请重新导入。';
+  const state = oauthState();
+  clearTimer(state);
+  state.current = null;
+  state.statusError = '登录会话已失效，请重新导入。';
   dropSessionFile();
-  retryDelayMs = RETRY_MIN_MS;
+  state.retryDelayMs = RETRY_MIN_MS;
   await setKeys({ [ACCESS_KEY]: '' });
 }
 
 async function ensureFreshNow(): Promise<void> {
-  if (!current) return;
-  clearTimer();
-  if (current.expiresAt - Date.now() > REFRESH_SKEW_MS) {
+  const state = oauthState();
+  if (!state.current) return;
+  clearTimer(state);
+  if (state.current.expiresAt - Date.now() > REFRESH_SKEW_MS) {
     armTimer();
     return;
   }
   try {
-    const previous = current;
+    const previous = state.current;
     const next = await refreshTokens(previous);
     await commitSession(next, previous);
-    statusError = '';
-    retryDelayMs = RETRY_MIN_MS;
+    state.statusError = '';
+    state.retryDelayMs = RETRY_MIN_MS;
     armTimer();
   } catch (error) {
     const message = messageOf(error);
@@ -232,9 +250,9 @@ async function ensureFreshNow(): Promise<void> {
       await invalidateSession();
       return;
     }
-    statusError = message.slice(0, 160);
-    const delay = retryDelayMs;
-    retryDelayMs = Math.min(RETRY_MAX_MS, retryDelayMs * 2);
+    state.statusError = message.slice(0, 160);
+    const delay = state.retryDelayMs;
+    state.retryDelayMs = Math.min(RETRY_MAX_MS, state.retryDelayMs * 2);
     armTimer(delay);
   }
 }
@@ -247,33 +265,36 @@ export function ensureFreshXaiOauth(): Promise<void> {
 /** Load the persisted session and re-arm the refresh timer (server start). */
 export function initXaiOauth(): Promise<void> {
   return serializeLifecycle(async () => {
-    if (initStarted) return;
+    const state = oauthState();
+    if (state.initStarted) return;
     const stored = readSessionFile();
     if (stored) {
-      current = stored;
+      state.current = stored;
       await setKeys({ [ACCESS_KEY]: stored.access });
       await ensureFreshNow();
     } else {
       await setKeys({ [ACCESS_KEY]: '' });
     }
-    initStarted = true;
+    state.initStarted = true;
   });
 }
 
 /** Sync accessor for the llm proxy: the freshest token or an empty string. */
 export function xaiOauthAccessToken(): string {
-  return current?.access ?? '';
+  return oauthState().current?.access ?? '';
 }
 
 export function xaiOauthStatus(): XaiOauthStatus {
-  return current
-    ? { found: true, email: current.email, expiresAt: current.expiresAt, error: statusError }
-    : { found: false, email: '', expiresAt: 0, error: statusError };
+  const state = oauthState();
+  return state.current
+    ? { found: true, email: state.current.email, expiresAt: state.current.expiresAt, error: state.statusError }
+    : { found: false, email: '', expiresAt: 0, error: state.statusError };
 }
 
 /** Adopt the official CLI session on explicit user action. */
 export function importXaiOauthFromCli(): Promise<XaiOauthStatus> {
   return serializeLifecycle(async () => {
+    const state = oauthState();
     let text: string;
     try {
       text = readFileSync(CLI_AUTH_JSON, 'utf8');
@@ -284,19 +305,19 @@ export function importXaiOauthFromCli(): Promise<XaiOauthStatus> {
     if (!parsed) {
       throw new Error('无法解析 ~/.grok/auth.json 中的登录会话。请先在终端运行 grok login 完成登录。');
     }
-    const previous = current;
+    const previous = state.current;
     try {
       const next = parsed.expiresAt - Date.now() > REFRESH_SKEW_MS
         ? parsed
         : await refreshTokens(parsed);
       await commitSession(next, previous);
-      statusError = '';
-      retryDelayMs = RETRY_MIN_MS;
+      state.statusError = '';
+      state.retryDelayMs = RETRY_MIN_MS;
       armTimer();
       return xaiOauthStatus();
     } catch (error) {
-      current = previous;
-      statusError = messageOf(error).slice(0, 160);
+      state.current = previous;
+      state.statusError = messageOf(error).slice(0, 160);
       armTimer();
       throw new Error(`登录会话已读取但刷新失败：${messageOf(error)}`);
     }
@@ -305,10 +326,11 @@ export function importXaiOauthFromCli(): Promise<XaiOauthStatus> {
 
 export function logoutXaiOauth(): Promise<void> {
   return serializeLifecycle(async () => {
-    clearTimer();
-    current = null;
-    statusError = '';
-    retryDelayMs = RETRY_MIN_MS;
+    const state = oauthState();
+    clearTimer(state);
+    state.current = null;
+    state.statusError = '';
+    state.retryDelayMs = RETRY_MIN_MS;
     dropSessionFile();
     await setKeys({ [ACCESS_KEY]: '' });
   });
