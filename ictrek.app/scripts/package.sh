@@ -124,6 +124,25 @@ verify_package() {
   for required in .env manifest.yml docker-compose.yml configs.yml routers.yml icon.png README.zh-CN.md README.en.md; do
     printf '%s\n' "$inner" | grep -qx "$required" || die "app.tar.gz is missing ${required}"
   done
+  python3 - "$app_tarball" <<'PY'
+import struct
+import sys
+import tarfile
+
+with tarfile.open(sys.argv[1], "r:gz") as archive:
+    icon = archive.extractfile("icon.png")
+    if icon is None:
+        raise SystemExit("icon.png is missing")
+    header = icon.read(26)
+if header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+    raise SystemExit("icon.png is not a valid PNG")
+width, height, bit_depth, color_type = struct.unpack(">IIBB", header[16:26])
+if (width, height, bit_depth, color_type) != (256, 256, 8, 6):
+    raise SystemExit(
+        f"icon.png must be 256x256 8-bit RGBA, got {width}x{height}, "
+        f"bit_depth={bit_depth}, color_type={color_type}"
+    )
+PY
 
   package_text="$(printf '%s\n' "$inner" | while IFS= read -r file; do
     [[ "$file" == icon.png ]] && continue

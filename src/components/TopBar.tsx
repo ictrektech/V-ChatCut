@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { theme } from '../theme';
-import { Icon } from './icons';
+import { BrandMark, Icon } from './icons';
 import { ExportHistory } from './ExportHistory';
 import { GenerationActivity } from './GenerationActivity';
 import { SkinPicker } from './settings/SkinPicker';
@@ -58,6 +58,11 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
   return (
     <header className={`cc-topbar cc-window-titlebar${isMacDesktop ? ' cc-window-titlebar--mac' : ''}`} style={{ gridColumn: '1 / -1', gridRow: 1, position: 'relative', height: '100%', display: 'flex', alignItems: 'center', padding: '0 6px', borderBottom: `0.5px solid ${theme.border}`, background: theme.panel, gap: 4 }}>
       <DesktopWindowControls />
+      <div className="cc-topbar-brand" aria-label="V-ChatCut">
+        <BrandMark size={22} />
+        <span>V-ChatCut</span>
+      </div>
+      <span className="cc-topbar-divider" />
       {/* home in a rounded chip + a vertical divider */}
       <button className="cc-tip" data-tip={t('返回工程列表')} aria-label={t('返回工程列表')} onClick={onHome}
         style={{ width: 28, height: 28, background: 'none', border: 'none', borderRadius: 4, cursor: onHome ? 'pointer' : 'default', padding: 0, lineHeight: 0, display: 'grid', placeItems: 'center', color: theme.textDim }}
@@ -65,7 +70,7 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
         onMouseLeave={(e) => { e.currentTarget.style.color = theme.textDim; e.currentTarget.style.background = 'none'; }}>
         <Icon name="home" size={16} />
       </button>
-      <span style={{ width: 1, height: 20, background: theme.border, margin: '0 4px' }} />
+      <span className="cc-topbar-divider" />
 
       {/* center: project title (no collaboration on local single machine, no collaborator users icon)*/}
       <div className="cc-topbar-title" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', fontSize: 12, color: theme.text }}>

@@ -17,6 +17,11 @@ CUDA profiles request the NVIDIA runtime and prefer `h264_nvenc`. V-ChatCut prob
 
 All backend images use Node.js 24, system FFmpeg/FFprobe, Chromium, and the VOS server entrypoint in `server.ts`.
 
+Brand assets use `assets/branding/v-chatcut-logo-master.png` as the generated
+transparent master. The browser and embedded page use the 512×512
+`public/openchatcut-icon.png`; VOS packages use the 256×256
+`ictrek.app/src/icon.png`; macOS packaging uses the derived ICNS asset.
+
 ## Build and publish images
 
 `build_image.sh` must run on the matching architecture host and requires an

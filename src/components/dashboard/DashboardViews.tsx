@@ -5,7 +5,7 @@ import { useT } from '../../i18n/locale';
 import { MediaCleanupDialog } from '../../media/MediaCleanupDialog';
 import { ShortcutsDialog } from '../../shortcuts/ShortcutsDialog';
 import { DashboardHeaderLinks } from '../DashboardHeaderLinks';
-import { BrandMark, Icon, OpenChatCutWordmark } from '../icons';
+import { BrandMark, Icon, VChatCutWordmark } from '../icons';
 import { McpGuideDialog } from '../settings/McpGuide';
 import { bindAction } from '../../shortcuts/actionRegistry';
 import { SettingsDialog } from '../settings/SettingsDialog';
@@ -62,7 +62,7 @@ export function DashboardTitlebarContent({ model }: { model: DashboardModel }) {
   return (
     <>
       <BrandMark size={20} />
-      <OpenChatCutWordmark />
+      <VChatCutWordmark />
       <span style={{ color: theme.textDim, fontSize: 13 }}>{t('· 我的工程')}</span>
       <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
         <DashboardHeaderLinks />

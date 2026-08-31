@@ -48,6 +48,7 @@ import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
+import { mediaSourceImportPlugin } from './media-source-import.ts';
 import { getKey } from "../keystore.ts";
 
 import { installSystemProxy } from '../net.ts';
@@ -70,6 +71,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
         return getKey("RESOURCE_PREVIEW_TOKEN");
       },
     }),
+    mediaSourceImportPlugin(),
     projectStorePlugin({ http: options.projectStoreHttp }),
     extensionStorePlugin(),
     externalAgentPlugin(),

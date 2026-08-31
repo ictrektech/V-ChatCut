@@ -204,12 +204,17 @@ button, input, select { font: inherit; }
 
 /* Editor chrome keeps its actions reachable while the centered project title yields first. */
 .cc-topbar { min-width:0; }
+.cc-topbar-brand { flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:0 4px 0 2px; color:var(--cc-text); font-size:12px; font-weight:720; letter-spacing:-.02em; white-space:nowrap; }
+.cc-topbar-brand img { flex:0 0 auto; }
+.cc-topbar-divider { flex:0 0 auto; width:1px; height:20px; margin:0 4px; background:var(--cc-border); }
 .cc-topbar-title { max-width:40vw; min-width:0; }
 .cc-topbar-title > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cc-topbar-title input { width:100%; min-width:0 !important; }
 .cc-topbar-actions { min-width:0; margin-left:auto; display:flex; align-items:center; gap:4px; }
 .cc-topbar-actions > * { flex-shrink:0; }
 @media (max-width:1100px) {
+  .cc-topbar-brand span { display:none; }
+  .cc-topbar-brand { gap:0; padding-right:2px; }
   .cc-topbar-title { max-width:18vw; }
 }
 @media (max-width:800px) {

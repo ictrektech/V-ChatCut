@@ -8,6 +8,12 @@ x-v-chatcut-backend-env: &v-chatcut-backend-env
   OPENCHATCUT_RENDER_CONCURRENCY: ${OPENCHATCUT_RENDER_CONCURRENCY:-2}
   OPENCHATCUT_MAX_ACTIVE_EXPORTS: ${OPENCHATCUT_MAX_ACTIVE_EXPORTS:-1}
   OPENCHATCUT_FFMPEG_THREADS: ${OPENCHATCUT_FFMPEG_THREADS:-4}
+  OPENCHATCUT_VOS_EXPOSED_ROOT: /exposed
+  OPENCHATCUT_WEBDAV_URL: ${OPENCHATCUT_WEBDAV_URL:-}
+  OPENCHATCUT_WEBDAV_USERNAME: ${OPENCHATCUT_WEBDAV_USERNAME:-}
+  OPENCHATCUT_WEBDAV_PASSWORD: ${OPENCHATCUT_WEBDAV_PASSWORD:-}
+  OPENCHATCUT_IMMICH_URL: ${OPENCHATCUT_IMMICH_URL:-http://${VOS_HOST_GW_IP}:${VOS_API_GW_PORT_INTERNAL}/app/com.ictrek.ai-album}
+  OPENCHATCUT_IMMICH_API_KEY: ${OPENCHATCUT_IMMICH_API_KEY:-}
 
 x-v-chatcut-frontend-base: &v-chatcut-frontend-base
   restart: unless-stopped
@@ -46,6 +52,7 @@ x-v-chatcut-backend-base: &v-chatcut-backend-base
   environment: *v-chatcut-backend-env
   volumes:
     - ${VOS_APP_STORAGE_PATH}/data:/data
+    - ${VOS_APP_EXPOSED_PATH:-}:/exposed:rslave,ro
   labels:
     - "traefik.enable=true"
     - "traefik.docker.network=vos_default"

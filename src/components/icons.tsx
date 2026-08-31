@@ -131,36 +131,34 @@ export function Icon({ name, size = 16, color = 'currentColor', strokeWidth = 1.
   );
 }
 
-/** Brand logo: dialogue bubble + play button (conversational video cutting). Bubble = accent color, play button = onAccent
- * (Skin Discipline Guaranteed ≥4.5 vs.). Use this when replacing sparkles before wordmark. */
+/** V-ChatCut brand mark: V ribbon + play triangle + timeline splice. */
 export function BrandMark({ size = 16 }: { size?: number }) {
   return (
     <img src="/openchatcut-icon.png" alt="" aria-hidden width={size} height={size} style={{ display: 'block' }} />
   );
 }
 
-/** OpenChatCut word mark: OPEN reverse white badge + Chat Cut solid word mark. */
-export function OpenChatCutWordmark({ width = 126 }: { width?: number }) {
+/** V-ChatCut wordmark paired with BrandMark in product chrome. */
+export function VChatCutWordmark({ width = 126 }: { width?: number }) {
   return (
     <svg
-      aria-label="OpenChatCut"
+      aria-label="V-ChatCut"
       role="img"
       width={width}
       height={width / 4}
       viewBox="0 0 504 126"
       style={{ display: 'block', flexShrink: 0 }}
     >
-      <rect x="0" y="13" width="166" height="92" rx="14" fill="currentColor" />
       <text
         fontFamily="Inter, Geist, system-ui, sans-serif"
-        dominantBaseline="alphabetic"
+        x="0"
+        y="84"
+        fill="currentColor"
+        fontSize="76"
+        fontWeight="780"
+        letterSpacing="-0.045em"
       >
-        <tspan x="83" y="82" textAnchor="middle" fill="var(--cc-panel)" fontSize="58" fontWeight="850" letterSpacing="-0.045em">
-          OPEN
-        </tspan>
-        <tspan x="188" y="79" fill="currentColor" fontSize="62" fontWeight="720" letterSpacing="-0.045em">
-          Chat Cut
-        </tspan>
+        V-ChatCut
       </text>
     </svg>
   );

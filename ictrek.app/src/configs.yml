@@ -28,3 +28,55 @@ configs:
       zh-CN: 每个 FFmpeg 任务可使用的最大线程数。
       en: Maximum number of threads available to each FFmpeg operation.
     default: 4
+
+  - name: OPENCHATCUT_WEBDAV_URL
+    type: string
+    title:
+      zh-CN: WebDAV 地址
+      en: WebDAV URL
+    description:
+      zh-CN: 可选。填写 WebDAV 根目录地址后，可从素材库直接浏览并导入媒体。
+      en: Optional WebDAV root URL for browsing and importing media from the media pool.
+    default: ""
+
+  - name: OPENCHATCUT_WEBDAV_USERNAME
+    type: string
+    title:
+      zh-CN: WebDAV 用户名
+      en: WebDAV Username
+    description:
+      zh-CN: WebDAV 账号；匿名服务可留空。
+      en: WebDAV account name. Leave empty for anonymous access.
+    default: ""
+
+  - name: OPENCHATCUT_WEBDAV_PASSWORD
+    type: string
+    secret: true
+    title:
+      zh-CN: WebDAV 密码
+      en: WebDAV Password
+    description:
+      zh-CN: WebDAV 账号密码；由 VOS 作为敏感配置保存。
+      en: WebDAV account password, stored by VOS as a secret configuration value.
+    default: ""
+
+  - name: OPENCHATCUT_IMMICH_URL
+    type: string
+    title:
+      zh-CN: AI 相册地址
+      en: AI Album URL
+    description:
+      zh-CN: Immich 服务地址；同一 VOS 内留空可自动走平台网关，独立服务可填写 http://192.168.1.10:2283。无需附加 /api。
+      en: Immich service URL. Leave empty to use the VOS gateway, or enter a standalone address such as http://192.168.1.10:2283. Do not append /api.
+    default: ""
+
+  - name: OPENCHATCUT_IMMICH_API_KEY
+    type: string
+    secret: true
+    title:
+      zh-CN: AI 相册 API Key
+      en: AI Album API Key
+    description:
+      zh-CN: 用于搜索和读取当前用户有权访问的 Immich 素材。
+      en: Immich API key used to search and read media available to its owner.
+    default: ""

@@ -44,6 +44,7 @@ interface MediaPoolToolbarProps {
   watchingFolder: string | null;
   watchBusy: boolean;
   onMobileUpload: (restoreFocus: () => void) => void;
+  onMediaSourceImport: (restoreFocus: () => void) => void;
   onAddSolid: () => void;
   onCreateFolder: (restoreFocus: () => void) => void;
   onViewChange: () => void;
@@ -206,6 +207,7 @@ function ActionsMenu(props: MenuProps) {
   };
   const popover = open && <div ref={props.lifecycle.menuRef} role="dialog" aria-label={t('更多操作')} className="cc-media-popover cc-media-actions-menu cc-media-toolbar-menu-fixed" style={props.lifecycle.actionsStyle}>
     <button onClick={() => runModal(props.onMobileUpload)}><Icon name="qrCode" size={15} />{t('手机传素材')}</button>
+    <button onClick={() => runModal(props.onMediaSourceImport)}><Icon name="folder" size={15} />{t('从 VOS / WebDAV / AI 相册导入…')}</button>
     {props.canAddSolid && <button onClick={() => run(props.onAddSolid, true)}><span className="cc-media-solid-icon">{t('色')}</span>{t('添加纯色')}</button>}
     <button onClick={() => runModal(props.onCreateFolder)}><Icon name="folderPlus" size={16} />{t('新建文件夹')}</button>
     <DirectoryImportActions
