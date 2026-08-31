@@ -16,6 +16,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
       - name: Fetch all release tags
         run: git fetch --force --tags origin
 
@@ -29,9 +34,11 @@ jobs:
           EOF
 
       - name: Verify VOS integration
+        env:
+          ONNXRUNTIME_NODE_INSTALL: 'skip'
         run: |
           set -euo pipefail
-          npm ci
+          npm ci --loglevel=error
           npm run sync:mediapipe
           npm run verify:server-tool-catalog
           npm run verify:vos-isolation
