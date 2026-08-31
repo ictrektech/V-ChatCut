@@ -17,6 +17,8 @@ V-ChatCut 是本地优先、Agent 驱动的多轨视频编辑器，支持素材�
 
 V-ChatCut 使用 VOS OIDC Fastpath 验证当前用户，并以不可变的 OIDC `sub` 建立用户目录。每个用户的工程、上传素材、设置、生成任务和导出状态分别保存在 `data/users/<用户哈希>/` 下；浏览器 localStorage、sessionStorage 和 IndexedDB 也按同一身份分区。切换 VOS 用户不会复用上一用户的数据。
 
+VOS 中工程和素材目录由应用映射自动管理，设置页不会向普通 VOS 用户提供本地路径修改入口。
+
 旧版共享在 `data/` 根目录的数据不会自动向所有用户开放。VOS 管理员可显式调用 `POST /api/auth/claim-legacy-data` 将旧工程和媒体认领到自己的用户目录；目标已有数据时接口会拒绝，成功后需要重启应用。
 
 ### 导入媒体

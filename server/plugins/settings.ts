@@ -100,6 +100,7 @@ function settingsBody(restartRequired = false) {
     models: { ...status.models, [DATA_DIR_ENV]: configured },
     mediaDir: uploadDir(),
     dataDir: profile.rootDir,
+    vosMode: profile.mode === 'vos-user',
     ...(restartRequired ? { restartRequired: true } : {}),
   };
 }

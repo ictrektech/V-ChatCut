@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { theme } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
@@ -29,7 +29,7 @@ import {
   runUpstreamUpdateCommand,
 } from '../../ui/upstreamUpdateAction';
 import {
-  SETTINGS_CATEGORIES, buildPatch, categoryGroupStats, findGroup, groupConfigured,
+  buildPatch, categoryGroupStats, groupConfigured, settingsCategoriesForStatus,
   modelValue, omitKey, savedMessage, vendorConfigured,
   type KeyStatusResponse, type SettingsCategory, type SettingsField, type SettingsGroup,
   type SettingsVendorPage, type StagedValues as Values,
@@ -162,17 +162,30 @@ function useHover(): [boolean, { onMouseEnter: () => void; onMouseLeave: () => v
 }
 
 /** The left tree capability is selected + the middle column provider is selected; when changing capabilities, the middle column is reset to the first provider with the capability. */
-function useTreeSelection(): {
+function findGroupIn(categories: readonly SettingsCategory[], key: string): SettingsGroup {
+  return categories.flatMap((c) => c.groups).find((g) => g.key === key)
+    ?? categories[0].groups[0];
+}
+
+function useTreeSelection(categories: readonly SettingsCategory[]): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
 } {
-  const first = SETTINGS_CATEGORIES[0].groups[0];
+  const first = categories[0].groups[0];
   const [groupKey, setGroupKey] = useState<string>(first.key);
   const [vendorKey, setVendorKey] = useState<string>(first.vendors[0].key);
-  const group = findGroup(groupKey);
+  const group = findGroupIn(categories, groupKey);
   const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0];
+  useEffect(() => {
+    if (group.key !== groupKey) {
+      setGroupKey(group.key);
+      setVendorKey(group.vendors[0].key);
+    } else if (!group.vendors.some((v) => v.key === vendorKey)) {
+      setVendorKey(group.vendors[0].key);
+    }
+  }, [group, groupKey, vendorKey]);
   const selectGroup = (key: string): void => {
-    const nextGroup = findGroup(key);
+    const nextGroup = findGroupIn(categories, key);
     setGroupKey(key);
     setVendorKey(nextGroup.vendors[0].key);
   };
@@ -239,7 +252,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   );
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
-  const { group, page, selectGroup, selectVendor } = useTreeSelection();
+  const settingsCategories = useMemo(() => settingsCategoriesForStatus(status), [status]);
+  const { group, page, selectGroup, selectVendor } = useTreeSelection(settingsCategories);
   const [reveal, setReveal] = useState(false);
   const refreshStatus = async (): Promise<void> => {
     try {
@@ -298,7 +312,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </div>
         </header>
         <div style={bodyRow}>
-          <CapabilityTree status={status} codexStatus={codexStatus} activeGroup={group.key} onSelect={selectGroup} />
+          <CapabilityTree categories={settingsCategories} status={status} codexStatus={codexStatus}
+            activeGroup={group.key} onSelect={selectGroup} />
           <VendorList group={group} activeVendor={page.key} onSelectVendor={selectVendor} ctx={ctx} />
           <VendorPane page={page} hint={group.hint} ctx={ctx} />
         </div>
@@ -311,7 +326,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
 // ── Left column (categories can be folded → capabilities can be selected) ──────────────────────────────────────
 
-function CapabilityTree({ status, codexStatus, activeGroup, onSelect }: {
+function CapabilityTree({ categories, status, codexStatus, activeGroup, onSelect }: {
+  categories: readonly SettingsCategory[];
   status: KeyStatusResponse | null; codexStatus: CodexAgentStatus | null;
   activeGroup: string; onSelect: (key: string) => void;
 }) {
@@ -326,7 +342,7 @@ function CapabilityTree({ status, codexStatus, activeGroup, onSelect }: {
   return (
     <nav style={sidebar}>
       <div style={treeScroll}>
-        {SETTINGS_CATEGORIES.map((cat) => (
+        {categories.map((cat) => (
           <TreeCategory key={cat.key} category={cat} status={status} codexStatus={codexStatus}
             open={!collapsed.has(cat.key)} activeGroup={activeGroup}
             onToggle={() => toggle(cat.key)} onSelect={onSelect} />

@@ -34,6 +34,8 @@ HttpOnly session, and derives an opaque directory from the immutable `sub`:
 Browser localStorage, sessionStorage, and IndexedDB use the same partition.
 WebDAV/Immich credentials, xAI sessions, MCP tokens, mobile uploads, projects,
 media, exports, and generation jobs are not shared between VOS users.
+VOS owns the application storage mapping, so the Settings panel hides local
+project/media directory changes for authenticated VOS users.
 
 Shared legacy data is not exposed automatically. A VOS administrator may call
 `POST /api/auth/claim-legacy-data` once; it refuses a non-empty target and

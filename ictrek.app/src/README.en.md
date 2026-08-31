@@ -17,6 +17,8 @@ Only AMD64 and ARM64 frontend images are built. Every ARM64 backend profile reus
 
 V-ChatCut authenticates the current user through the VOS OIDC Fastpath and uses the immutable OIDC `sub` claim to partition projects, uploaded media, settings, generation jobs, export state, localStorage, sessionStorage, and IndexedDB under `data/users/<subject-hash>/`.
 
+VOS owns the project and media directory mapping, so authenticated VOS users do not see local path changes in Settings.
+
 Legacy data at the shared `data/` root is not exposed automatically. A VOS administrator can explicitly call `POST /api/auth/claim-legacy-data` to claim it once; the operation refuses a non-empty target and requires an app restart.
 
 ### Importing media

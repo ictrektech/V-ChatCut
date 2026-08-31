@@ -290,6 +290,27 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   },
 ];
 
+export function settingsCategoriesForStatus(status: KeyStatusResponse | null): readonly SettingsCategory[] {
+  if (!status?.vosMode) return SETTINGS_CATEGORIES;
+  return SETTINGS_CATEGORIES.map((category) => {
+    if (category.key !== 'cloud') return category;
+    return {
+      ...category,
+      groups: category.groups.flatMap((group) => {
+        if (group.key !== 'storage') return [group];
+        const vendors = group.vendors.filter((vendor) => vendor.key !== 'storage/projects');
+        if (vendors.length === 0) return [];
+        return [{
+          ...group,
+          title: '云备份',
+          hint: 'VOS 中工程和素材目录由应用映射自动管理；这里只配置可选云备份。',
+          vendors,
+        }];
+      }),
+    };
+  }).filter((category) => category.groups.length > 0);
+}
+
 /** Temporary changes: field name in map = temporary storage; '' = clear explicitly (model fields will return to default).*/
 export type StagedValues = Record<string, string>;
 
