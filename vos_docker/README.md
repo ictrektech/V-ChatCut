@@ -49,6 +49,11 @@ Build-host assignments are enforced from the machine architecture and Jetson
 release: tc232 builds both AMD profiles, tc192 (L4T R36) builds ARM CPU and
 L4T, and tc229 (Thor R39) builds ARM CUDA and Thor/Spark.
 
+Backend images start through a root-owned, idempotent entrypoint that prepares
+the VOS bind-mounted `/data/users` and media directories, then drops privileges
+to the `node` user. VOS users never need to change host or container permissions
+manually, and the application process does not remain privileged.
+
 ```bash
 # Build both the shared AMD frontend and AMD CUDA backend.
 ./vos_docker/build_image.sh --sheet AMD_with_cuda

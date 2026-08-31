@@ -35,7 +35,7 @@ RUN sed -i \
       -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
       /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates chromium curl dumb-init ffmpeg fonts-noto-cjk \
+    && apt-get install -y --no-install-recommends ca-certificates chromium curl dumb-init ffmpeg fonts-noto-cjk gosu \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev \
@@ -51,10 +51,12 @@ COPY shared ./shared
 COPY skills ./skills
 COPY src ./src
 COPY tsconfig*.json ./
-RUN mkdir -p /data/media/uploads && chown -R node:node /data
-USER node
+COPY vos_docker/backend-entrypoint.sh /usr/local/bin/v-chatcut-backend-entrypoint
+RUN chmod 0755 /usr/local/bin/v-chatcut-backend-entrypoint \
+    && mkdir -p /data/media/uploads /data/users \
+    && chown -R node:node /data
 EXPOSE 5199
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl --fail --silent http://127.0.0.1:5199/ >/dev/null || exit 1
-ENTRYPOINT ["dumb-init", "--"]
+ENTRYPOINT ["dumb-init", "--", "/usr/local/bin/v-chatcut-backend-entrypoint"]
 CMD ["node", "vos-dist/server.mjs"]
