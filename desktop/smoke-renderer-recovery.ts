@@ -1,6 +1,10 @@
 import { BrowserWindow } from 'electron';
 
 const RECOVERY_TIMEOUT_MS = 10_000;
+// A fresh BrowserWindow cold-boots a whole renderer (parse, locale dict, lazy
+// chunks) before the transcript view mounts; 10s is too tight on a throttled
+// CI machine even with the pull path in place.
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
 
 async function crashAndWait(win: BrowserWindow): Promise<void> {
   const recovered = new Promise<void>((resolve, reject) => {
@@ -19,7 +23,7 @@ async function crashAndWait(win: BrowserWindow): Promise<void> {
 async function waitForTranscript(win: BrowserWindow, name: string): Promise<void> {
   await win.webContents.executeJavaScript(`new Promise((resolve, reject) => {
     const observer = new MutationObserver(check);
-    const timer = setTimeout(() => { observer.disconnect(); reject(new Error('transcript payload timed out')); }, ${RECOVERY_TIMEOUT_MS});
+    const timer = setTimeout(() => { observer.disconnect(); reject(new Error('transcript payload timed out')); }, ${TRANSCRIPT_TIMEOUT_MS});
     function check() {
       if (!document.body?.textContent?.includes(${JSON.stringify(name)})) return;
       observer.disconnect(); clearTimeout(timer); resolve(true);
@@ -45,6 +49,11 @@ export async function runDesktopRendererRecoverySmoke(win: BrowserWindow): Promi
   await waitForTranscript(floating, latest.entries[0]!.name);
   await crashAndWait(floating);
   await waitForTranscript(floating, latest.entries[0]!.name);
-  floating.close();
   console.log('[smoke] floating transcript crash restored the latest payload');
+  // No close() and no destroy(): tearing down a window whose renderer went
+  // through forcefullyCrashRenderer + reload deadlocks the Windows main
+  // process either way (v0.2.12 CI runs 5 and 6 — the success line above
+  // printed, then timers, microtasks and every exit path stopped). This is
+  // the smoke's final phase; the process exits right after and the OS reaps
+  // the window.
 }

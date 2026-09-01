@@ -6,6 +6,12 @@ import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
 import { bootstrapVOSSession } from './vos/auth';
 import { installVOSStoragePartition } from './vos/storagePartition';
+import { ensureLocaleDict, getLocale, prefetchLocaleDicts } from './i18n/locale';
+
+// Kick the active locale's dictionary off FIRST so its fetch overlaps the setup
+// below; the render waits on it so no frame renders untranslated copy. Only
+// this one language is fetched — the other three cost nothing until switched.
+const localeReady = ensureLocaleDict(getLocale());
 
 function requireRoot(): HTMLElement {
   const value = document.getElementById('root');
@@ -24,6 +30,7 @@ async function start(): Promise<void> {
   loadProjectFonts();
   void hydratePlugins().catch(() => {});
   const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
+  await localeReady;
   const [{ default: App }, { TranscriptWindowRoot }] = await Promise.all([
     import('./App'),
     import('./media/TranscriptWindowRoot'),
@@ -33,6 +40,11 @@ async function start(): Promise<void> {
       {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
     </StrictMode>,
   );
+
+  // Warm the other languages only once the first paint is out of the way, so
+  // the language switcher stays instant without competing for the boot.
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(prefetchLocaleDicts);
+  else setTimeout(prefetchLocaleDicts, 2_000);
 }
 
 void start().catch((error) => {

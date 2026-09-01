@@ -8,6 +8,82 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-08-31
+
+### Fixed / 修复
+
+- Closing any window on Windows no longer pops "A JavaScript error occurred in the main process — Object has been destroyed": the renderer-recovery disposer ran inside the window's own `closed` handler and touched the already-destroyed `webContents`. macOS was unaffected only because the recovery is Windows-gated, which is exactly why it escaped testing. The same uncaught exception's modal dialog is what deadlocked the release smoke's teardown.
+  Windows 关闭任意窗口不再弹出「A JavaScript error occurred in the main process — Object has been destroyed」：渲染器恢复的卸载器在窗口自身的 `closed` 事件里访问了已销毁的 `webContents`。macOS 因恢复逻辑按平台门禁短路而不受影响——这也正是它逃过验证的原因。同一未捕获异常的模态弹窗正是发版冒烟收尾死锁的真身。
+
+## [0.2.12] - 2026-08-31
+
+### Added / 新增
+
+- Inspector **Crop Left / Right / Top / Bottom** under Clip properties → Basic → Transform (below Corner). Values are composition pixels; cropped pixels are fully transparent. Agents call this **flex crop** / **flexcrop** via `edit_item` `transform.crop` or `transform.flexCrop: { left, right, top, bottom }` in pixels (`null` clears). Not a timeline trim. Contributed by @J160KU.
+  检查器「裁左 / 裁右 / 裁上 / 裁下」位于片段属性 → 基础 → 变换（圆角下方）。数值为画布像素，裁掉的区域完全透明。Agent 术语为 **flex crop** / **flexcrop**：`edit_item` 的 `transform.crop` 或 `transform.flexCrop: { left, right, top, bottom }`（像素；`null` 清除）。不是时间线裁剪。由 @J160KU 贡献。
+- Local transcription gains a **Whisper Large v3 Turbo** tier (#127): near large-v2 quality at a fraction of the decode cost. Desktop runs the 574MB GGML build natively; the browser uses the word-timestamp ONNX export (~1.05GB).
+  本地转写新增 **Whisper Large v3 Turbo** 档（#127）：接近 large-v2 的质量、远低于它的解码开销。桌面端本地运行 574MB GGML 模型；浏览器端使用带词级时间戳的 ONNX 导出（约 1.05GB）。
+
+<p align="center">
+  <img src="assets/readme-pic/flexcrop-inspector.png" alt="FlexCrop inspector: preview edges 1–4 match Crop Left, Crop Right, Crop Top, and Crop Bottom sliders" width="920" />
+</p>
+
+### Fixed / 修复
+
+- **Windows local transcription never actually ran** (#120): packaging moved `whisper-cli.exe` away from its DLLs, so the process died instantly with a bare exit code for every model size. The executable now ships beside its libraries — verified both ways on a real Windows runner. Linux had the same layout fault and is fixed the same way.
+  **Windows 本地转写此前从未真正运行过**（#120）：打包把 `whisper-cli.exe` 和它的 DLL 分开放置，任何模型尺寸都会立刻以裸退出码失败。现在可执行文件与库同目录（在真实 Windows runner 上双向验证）；Linux 存在同样的布局问题，一并修复。
+- Browser Whisper word timestamps no longer drift from the prefix-alignment bug, and the hallucination-suppression list is active again — transformers.js upgraded to 4.2.0 (#109).
+  浏览器 Whisper 词级时间戳不再受前缀对齐问题影响，幻听抑制列表重新生效——transformers.js 升级到 4.2.0（#109）。
+- Stopping an agent run and immediately sending the next task no longer loses the new answer: late results from the cancelled run settled with the new run's credentials and tore its stream down (#125). Every run now carries an immutable identity, and stale callbacks are fenced.
+  停止 Agent 任务后立刻发送新任务不再丢失新回答：被取消任务的迟到结果曾借用新任务的凭证结算并连带关闭其事件流（#125）。现在每个任务携带不可变身份，过期回调被栅栏拦下。
+- One failed proposal apply no longer silently disables every later apply in the session — the symptom behind "the agent says done but the track is empty" (#129).
+  一次失败的 proposal 应用不再静默禁用会话内之后的所有应用——即「Agent 说完成了但轨道是空的」的元凶（#129）。
+- The floating transcript window no longer opens blank on slow machines: its payload was push-only and the push could beat the page's listener; the window now also pulls on mount.
+  浮动文字稿窗口在慢机器上不再打开即空白：载荷原先只推送一次、可能早于页面监听器注册；现在窗口挂载后会主动拉取。
+- Preview orange outline, clip-path cut, and rotation pivot stay aligned: the preview wrapper uses the stage content box and a single composition scale so Remotion does not letterbox on Y under the overlay.
+  预览橙框、裁切与旋转轴对齐：预览容器按舞台 content box 与单一画布比例适配，避免 Remotion 在 overlay 下上下加黑边。
+
+- A project this build could not read is no longer overwritten by the next save: reads now report missing and unreadable separately, the editor offers retry instead of silently starting from an empty document, a failed bootstrap merge no longer deletes the local project index, and orphan media cleanup no longer purges everything when the index is momentarily empty.
+  本版读不懂的工程不会再被下一次保存覆盖：读取区分"不存在"与"读不出"，编辑器给出重试而不是静默从空文档开始；引导合并失败不再删除本地工程索引；索引短暂为空时，孤儿素材清理不再清空全部素材。
+- Version history, export history, templates and the job registry now preserve records this build cannot parse instead of dropping them on the next write, so opening a project in an older build no longer discards what a newer one wrote.
+  版本历史、导出历史、模板与任务注册表在写回时保留本版解析不了的记录，不再丢弃——用旧版打开工程不会再抹掉新版写入的内容。
+- Multicam and link groups with a slightly out-of-range field are repaired rather than discarded, and per-angle evidence is no longer required for the whole group to survive.
+  多机位与链接组的轻微越界字段改为修正而非整组丢弃，且不再要求每个角度都带证据才能保留。
+- Browser fast export no longer fails on media that is simply slow to open. It inherited Remotion's 30-second per-frame default while the local renderer allowed far more, so the same project could fail on one engine and render on the other; both now share a ten-minute per-frame budget, which bounds a single stuck frame and never the export as a whole.
+  浏览器快导不再因素材"打开慢"而失败。此前它沿用 Remotion 的 30 秒单帧默认值，而本机渲染器的预算宽得多，导致同一工程在一个引擎失败、在另一个引擎正常；现在两条路径共用 10 分钟单帧预算，该预算只约束单帧卡死，不限制导出总时长。
+- Exports started by the Agent no longer report failure for files that had already been written; the download helper reached the browser through `window`, which does not exist in the tool runtime.
+  Agent 发起的导出不再对已经写出的文件报失败——下载辅助函数经由 `window` 访问，而工具运行时没有 `window`。
+- FCPXML export now emits a time map for speed-changed clips, and asset collection no longer decides a clip's video/audio makeup from the first item alone.
+  FCPXML 导出为变速片段写入 timeMap；素材收集不再仅凭第一个片段判定整体的视频/音频构成。
+- An unknown caption template id falls back to the plain style instead of breaking the preview, and bilingual caption translations are marked stale when their timing changes instead of keeping absolute times.
+  未知字幕模板 id 回退到 plain 样式而不是让预览崩溃；双语字幕在时间轴变化后标记为过期，不再固化绝对时间。
+- Agent runs no longer dispatch the same instruction twice on a rapid double send, tool arguments are bounded so an out-of-range motion-graphic size cannot freeze the tab, model-supplied internal `__` fields are stripped before execution, and a tool that fails midway rolls its draft back instead of leaving a forked one.
+  Agent 运行不再因快速双击发送而重复派发同一指令；工具参数加上界，越界的 MG 尺寸不会再冻结标签页；模型传入的内部 `__` 字段在执行前剥离；工具中途失败会回滚草稿而不是留下分叉。
+- Transcript word clicks seek to the right frame under a reordered play order, and local ASR no longer falls back to transcribing the whole video.
+  在调整播放顺序后，点击文字稿词语可跳转到正确帧；本地 ASR 不再回退成整段视频转写。
+- Chat and version writes that fail now surface a toast instead of only a console error.
+  聊天与版本写入失败会给出提示，而不是只打一条控制台错误。
+- Completed the Russian transcription language labels.
+  补全俄语转写语言标签。
+
+### Performance / 性能
+
+- First load dropped from about 3062 KB (900 KB gzip) to 689 KB (198 KB gzip). React was being pulled into the Remotion chunk, so the project list downloaded a 2 MB video renderer it never used; all four locale dictionaries shipped in the entry chunk, so every user parsed three languages they cannot read; and ten dialogs were imported eagerly although each renders only once opened. Dialogs and the non-active languages now load on demand and warm on idle, so opening them stays instant.
+  首屏从约 3062 KB（900 KB gzip）降到 689 KB（198 KB gzip）。此前 React 被打进 Remotion 分块，工程列表要下载 2 MB 的视频渲染器却从不使用；四份语言词典全部进入入口分块，每个用户都要解析三种读不懂的语言；十个对话框被静态引入，而它们只有打开时才渲染。现在对话框与非当前语言按需加载并在空闲时预热，打开依然瞬时。
+- Moving the pointer across the timeline now updates once per displayed frame instead of once per pointer report: 60 pointer moves went from 890 DOM mutations in 292 ms to 250 in 125 ms.
+  在时间线上移动指针改为每显示帧更新一次，而不是每个指针事件更新一次：60 次移动从 890 次 DOM 变更 / 292 ms 降到 250 次 / 125 ms。
+- Long transcripts skip layout for off-screen speech blocks: a 9000-word transcript went from 34.29 ms of layout to 0.64 ms, with text selection across off-screen blocks unaffected.
+  长文字稿跳过屏幕外语音块的布局：9000 词文字稿的布局耗时从 34.29 ms 降到 0.64 ms，跨屏幕外块的文本选择不受影响。
+- Reduced hot-path overhead in the editor store, sequence-graph validation, transcript rendering and agent stream persistence.
+  降低编辑器 store、序列图校验、文字稿渲染与 Agent 流式持久化的热路径开销。
+
+### Security / 安全
+
+- Media read paths (`/media/uploads`, upload listing, presigned reads, media preview, and the desktop static file server) now require the same local request shape the write paths already did.
+  素材读取路径（`/media/uploads`、上传列表、预签名读取、媒体预览与桌面端静态文件服务）现在与写入路径一样要求相同的本机请求形态。
+- Server errors returned to the browser no longer carry absolute filesystem paths, and skill execution rejects inline interpreter invocations.
+  返回浏览器的服务端错误不再携带绝对文件系统路径；技能执行拒绝内联解释器调用。
+
 ## [0.2.11] - 2026-08-25
 
 ### Added / 新增

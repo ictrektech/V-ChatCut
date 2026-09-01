@@ -777,8 +777,9 @@ button, input, select { font: inherit; }
   display:flex; align-items:center; justify-content:center;
   overflow:hidden; padding:12px 20px; background:var(--cc-bg);
 }
-/* Remotion Player root — allow shrink, keep letterbox */
-.cc-preview-stage > div { flex:0 1 auto; max-width:100%; max-height:100%; }
+/* Fitted composition rect — do not flex-shrink on the row axis only (that
+ * letterboxes the Player on Y while the overlay still covers the taller box). */
+.cc-preview-stage > div { flex:0 0 auto; max-width:100%; max-height:100%; }
 @container preview-workspace (max-width:480px) {
   .cc-preview-header { padding-inline:8px !important; }
   .cc-preview-header-actions { overflow-x:auto; scrollbar-width:none; }
@@ -1573,7 +1574,18 @@ button, input, select { font: inherit; }
 
 /* Script view: speaker blocks + gap rows */
 .cc-tx-script { display:flex; flex-direction:column; gap:14px; }
-.cc-tx-speech { display:flex; flex-direction:column; gap:6px; }
+.cc-tx-speech {
+  display:flex; flex-direction:column; gap:6px;
+  /* Long transcripts render thousands of word spans. content-visibility skips
+     layout AND paint for blocks scrolled out of view while KEEPING them in the
+     DOM — unlike unmount-based virtualization, which would break cross-block
+     text selection (the agent's transcript references come from DOM ranges),
+     find-in-page, and drag-reorder. `auto` in contain-intrinsic-size makes the
+     browser remember each block's last measured height, so the scrollbar does
+     not jump as blocks enter and leave. */
+  content-visibility:auto;
+  contain-intrinsic-size:auto 72px;
+}
 .cc-tx-speech-label {
   font-size:13px; font-weight:600; letter-spacing:0.01em;
 }
