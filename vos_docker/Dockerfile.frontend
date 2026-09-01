@@ -7,7 +7,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY . .
 ARG VITE_BASE_PATH=/app/com.ictrek.v-chatcut/
+ARG VOS_APP_VERSION
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+ENV VOS_APP_VERSION=${VOS_APP_VERSION}
 RUN npm run sync:mediapipe \
     && npm run verify:server-tool-catalog \
     && npx tsc -b \

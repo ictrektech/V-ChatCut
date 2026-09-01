@@ -24,6 +24,7 @@ import {
 } from '../shared/llm-providers.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
+import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
 import {
   classifyStatus,
   networkMessage,
@@ -301,6 +302,67 @@ const cartesiaProbe: ProbeDef = {
   }),
 };
 
+function withTrailingSlash(url: URL): URL {
+  if (!url.pathname.endsWith('/')) url.pathname += '/';
+  return url;
+}
+
+function webdavProbeBase(get: Get): URL | null {
+  const raw = get('OPENCHATCUT_WEBDAV_URL').trim();
+  if (!raw) return null;
+  const url = withTrailingSlash(new URL(raw));
+  if (url.username || url.password) throw new Error('WebDAV 地址不要写用户名密码，请使用单独的用户名/密码字段');
+  return url;
+}
+
+const webdavProbe: ProbeDef = {
+  needs: [[]],
+  run: (get) => {
+    const url = webdavProbeBase(get);
+    if (!url) return Promise.resolve(new Response('尚未填写 WebDAV 地址', { status: 400 }));
+    const headers = new Headers({ depth: '0', 'content-type': 'application/xml' });
+    const username = get('OPENCHATCUT_WEBDAV_USERNAME');
+    const password = get('OPENCHATCUT_WEBDAV_PASSWORD');
+    if (username || password) headers.set('authorization', `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`);
+    return fetchWithProxy(url, {
+      method: 'PROPFIND',
+      signal: t(),
+      headers,
+      body: '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><displayname/><resourcetype/></prop></propfind>',
+    });
+  },
+  okText: () => 'WebDAV 连接成功 · 根目录可访问',
+};
+
+function immichProbeBase(get: Get): URL | null {
+  const raw = get('OPENCHATCUT_IMMICH_URL').trim();
+  if (!raw) return null;
+  const url = new URL(raw);
+  url.pathname = `${url.pathname.replace(/\/$/, '')}${url.pathname.endsWith('/api') ? '' : '/api'}/`;
+  return url;
+}
+
+function immichAcceptsVOSAccessToken(url: URL | null): boolean {
+  return !!url && vosAuthEnabled() && /\/app\/com\.ictrek\.ai-album(?:\/|$)/.test(url.pathname);
+}
+
+const immichProbe: ProbeDef = {
+  needs: [[]],
+  run: async (get) => {
+    const url = immichProbeBase(get);
+    if (!url) return new Response('尚未填写 AI 相册地址', { status: 400 });
+    const endpoint = new URL('server/about', url);
+    const apiKey = get('OPENCHATCUT_IMMICH_API_KEY');
+    const vosToken = immichAcceptsVOSAccessToken(url) ? currentVOSUser()?.accessToken?.trim() ?? '' : '';
+    if (!apiKey && !vosToken) return new Response('尚未填写 AI 相册 API Key', { status: 401 });
+    const request = (headers: HeadersInit): Promise<Response> => fetchWithProxy(endpoint, { signal: t(), headers });
+    let response = vosToken ? await request({ authorization: `Bearer ${vosToken}` }) : await request({ 'x-api-key': apiKey });
+    if (response.status === 401 && vosToken && apiKey) response = await request({ 'x-api-key': apiKey });
+    return response;
+  },
+  okText: () => 'AI 相册连接成功 · 鉴权通过',
+};
+
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
@@ -430,6 +492,8 @@ export const PROBES: Record<string, ProbeDef> = {
       return fetchWithProxy('https://freesound.org/apiv2/search/text/?' + params.toString(), { signal: t() });
     },
   },
+  'remote-media/webdav': webdavProbe,
+  'remote-media/immich': immichProbe,
   'transcription/assemblyai': {
     needs: [['ASSEMBLYAI_API_KEY']],
     run: (get) => fetch('https://api.assemblyai.com/v2/transcript?limit=1', {

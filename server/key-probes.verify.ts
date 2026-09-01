@@ -31,6 +31,7 @@ const EXPECTED_PAGES = [
   'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai',
   'music/mureka', 'music/minimax', 'music/atlas', 'music/sonilo',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
+  'remote-media/webdav', 'remote-media/immich',
   'transcription/assemblyai', 'transcription/openai', 'transcription/mistral',
   'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
   'sandbox/e2b',
@@ -117,8 +118,48 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   }
 }
 
+// 8. Remote media probes are real source checks, not generic API-key probes.
+{
+  const missingWebdav = await runProbe('remote-media/webdav', {});
+  assert.equal(missingWebdav.ok, false);
+  assert.match(missingWebdav.message, /WebDAV 地址|HTTP 400/);
 
-// 8. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
+  const missingImmich = await runProbe('remote-media/immich', {});
+  assert.equal(missingImmich.ok, false);
+  assert.match(missingImmich.message, /AI 相册地址|HTTP 400/);
+
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; method: string; auth: string | null; apiKey: string | null }> = [];
+  globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      url: String(input),
+      method: init?.method ?? 'GET',
+      auth: headers.get('authorization'),
+      apiKey: headers.get('x-api-key'),
+    });
+    return new Response('{}', { status: String(input).includes('/api/server/about') ? 200 : 207 });
+  };
+  try {
+    const webdav = await runProbe('remote-media/webdav', { OPENCHATCUT_WEBDAV_URL: 'https://dav.example/root/', OPENCHATCUT_WEBDAV_USERNAME: 'u', OPENCHATCUT_WEBDAV_PASSWORD: 'p' });
+    assert.equal(webdav.ok, true);
+    assert.match(webdav.message, /WebDAV 连接成功/);
+    const immich = await runProbe('remote-media/immich', { OPENCHATCUT_IMMICH_URL: 'https://album.example', OPENCHATCUT_IMMICH_API_KEY: 'k' });
+    assert.equal(immich.ok, true);
+    assert.match(immich.message, /AI 相册连接成功/);
+    assert.deepEqual(calls.map((call) => [call.url, call.method]), [
+      ['https://dav.example/root/', 'PROPFIND'],
+      ['https://album.example/api/server/about', 'GET'],
+    ]);
+    assert.equal(calls[0].auth?.startsWith('Basic '), true);
+    assert.equal(calls[1].apiKey, 'k');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+
+// 9. Local storage directory probe: empty group needs = can be tested if not filled in (not set = default directory); the relative path is configured
 // Level failure (postCheck copy, no HTTP prefix); success copy goes to okText. Neither case touched the plate.
 {
   const unset = await runProbe('storage/local', {});
@@ -130,7 +171,7 @@ assert.match(networkMessage(Object.assign(new Error('The operation was aborted d
   assert.doesNotMatch(relative.message, /HTTP/);
 }
 
-// 9. Project storage root probe: a local disk check, never a network request. Empty = the
+// 10. Project storage root probe: a local disk check, never a network request. Empty = the
 // default root (legal), relative path rejected, writable folder accepted, and a root
 // pinned by the environment refuses the change instead of pretending to accept it.
 {

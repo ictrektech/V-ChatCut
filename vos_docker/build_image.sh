@@ -10,6 +10,7 @@ FRONTEND_COMPONENT="v-chatcut-frontend"
 BACKEND_REPOSITORY="${REGISTRY}/${BACKEND_COMPONENT}"
 FRONTEND_REPOSITORY="${REGISTRY}/${FRONTEND_COMPONENT}"
 FEISHU_HELPER="${ROOT_DIR}/vos_docker/feishu_components.py"
+VERSION_FILE="${ROOT_DIR}/ictrek.app/VERSION"
 
 TARGET_SHEETS=()
 COMPONENTS=()
@@ -137,8 +138,11 @@ require_cmd docker
 require_cmd python3
 docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 [[ -f "$FEISHU_HELPER" ]] || die "missing Feishu helper: $FEISHU_HELPER"
+[[ -f "$VERSION_FILE" ]] || die "missing VOS version file: $VERSION_FILE"
 
 DATE="$(date +%Y%m%d)"
+VOS_APP_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+[[ "$VOS_APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid VOS app version: $VOS_APP_VERSION"
 NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-bookworm-slim}"
 FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-alpine}"
 NGINX_BASE_IMAGE="${V_CHATCUT_NGINX_BASE_IMAGE:-${REGISTRY}/nginx:${HOST_ARCH}_1.29-alpine}"
@@ -161,6 +165,7 @@ if contains frontend "${COMPONENTS[@]}"; then
       --sbom=false \
       --build-arg "NODE_BASE_IMAGE=${FRONTEND_NODE_BASE_IMAGE}" \
       --build-arg "NGINX_BASE_IMAGE=${NGINX_BASE_IMAGE}" \
+      --build-arg "VOS_APP_VERSION=${VOS_APP_VERSION}" \
       -t "v-chatcut-frontend:${tag}" \
       -t "$image" \
       -f vos_docker/Dockerfile.frontend \
@@ -190,6 +195,7 @@ if contains backend "${COMPONENTS[@]}"; then
       --provenance=false \
       --sbom=false \
       --build-arg "NODE_BASE_IMAGE=${NODE_BASE_IMAGE}" \
+      --build-arg "VOS_APP_VERSION=${VOS_APP_VERSION}" \
       -t "v-chatcut-backend:${tag}" \
       -t "$image" \
       -f "$dockerfile" \

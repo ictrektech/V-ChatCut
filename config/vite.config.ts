@@ -10,6 +10,7 @@ import { runtimeProfile } from '../server/runtime-profile.ts';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
+const displayAppVersion = (process.env.VOS_APP_VERSION || appPackage.version).trim();
 export function applyAuthoritativeLocalProvider(
   env: Record<string, string>,
   source: string,
@@ -132,7 +133,7 @@ export default defineConfig(({ mode }) => {
     // injected for the agent's system prompt (src/agent/capabilities.ts). BOOLEANS
     // ONLY — no key value is ever exposed to the browser.
     define: {
-      __APP_VERSION__: JSON.stringify(appPackage.version),
+      __APP_VERSION__: JSON.stringify(displayAppVersion),
       __CONFIGURED_CAPS__: JSON.stringify({
         image: Boolean(imageKey || geminiKey || minimaxKey),
         voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey),
