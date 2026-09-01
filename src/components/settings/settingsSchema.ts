@@ -192,13 +192,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
         ] },
       { key: 'remote-media', title: '远程素材', hint: '每个 VOS 用户单独保存自己的连接凭证。',
         vendors: [
-          { key: 'remote-media/webdav', vendor: 'localdisk', title: 'WebDAV',
+          { key: 'remote-media/webdav', vendor: 'webdav', title: 'WebDAV',
             fields: [
               text('OPENCHATCUT_WEBDAV_URL', 'WebDAV 地址'),
               text('OPENCHATCUT_WEBDAV_USERNAME', '用户名'),
               secret('OPENCHATCUT_WEBDAV_PASSWORD', '密码'),
             ] },
-          { key: 'remote-media/immich', vendor: 'localdisk', title: 'AI 相册 · Immich',
+          { key: 'remote-media/immich', vendor: 'immich', title: 'AI 相册 · Immich',
             note: '入口：设置 → 素材 · 转写 → 远程素材 → AI 相册。VOS 内置 AI 相册会先尝试当前 VOS 登录用户授权；如果 AI 相册 API 返回 401，或连接独立 Immich，请填写自己的 API Key。',
             fields: [
               text('OPENCHATCUT_IMMICH_URL', 'Immich 地址'),

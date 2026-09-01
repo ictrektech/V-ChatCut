@@ -1,5 +1,6 @@
 x-v-chatcut-backend-env: &v-chatcut-backend-env
   NODE_ENV: production
+  VOS_APP_VERSION: __APP_VERSION__
   PORT: 5199
   OPENCHATCUT_BIND_HOST: 0.0.0.0
   OPENCHATCUT_DATA_DIR: /data
@@ -19,6 +20,8 @@ x-v-chatcut-backend-env: &v-chatcut-backend-env
 
 x-v-chatcut-frontend-base: &v-chatcut-frontend-base
   restart: unless-stopped
+  environment:
+    VOS_APP_VERSION: __APP_VERSION__
   networks:
     vos_default:
       aliases:

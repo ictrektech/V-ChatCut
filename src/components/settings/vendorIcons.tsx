@@ -42,6 +42,7 @@ export type VendorId =
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
+  | 'webdav' | 'immich'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
   | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth';
 
@@ -95,6 +96,8 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
   localasr: { bg: '#3a7d44', mono: 'ASR', fg: '#eaf5ec' }, // On-device ASR (whisper, non-vendor)
+  webdav: { bg: '#2f6fed', mono: 'WD', fg: '#f8fbff' },
+  immich: { bg: '#4250af', mono: 'IM', fg: '#f8f7ff' },
   byteplus: { bg: '#0055FF', mono: 'BP' }, // BytePlus ModelArk, no official SVG vendored yet
   inworld: { bg: '#7A5CFF', mono: 'IW' }, // Inworld TTS, no official SVG vendored yet
   speechify: { bg: '#FF6A3D', mono: 'SP' }, // Speechify, no official SVG vendored yet
