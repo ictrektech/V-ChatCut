@@ -25,8 +25,8 @@ Legacy data at the shared `data/` root is not exposed automatically. A VOS admin
 
 - **Computer and phone**: upload from the browser or use the temporary phone upload channel.
 - **VOS storage / Samba**: the exposed view is application-wide and is disabled by default in multi-user mode. Enable “Shared VOS Exposed Directory” only for a public library available to every V-ChatCut user.
-- **WebDAV**: deployment may provide an endpoint default; every VOS user saves their own account and password in V-ChatCut Settings.
-- **AI Album**: inside the same VOS, V-ChatCut uses the current user's OIDC token to access `com.ictrek.ai-album`; for standalone Immich or fallback access, each VOS user may save their own API key in V-ChatCut Settings.
+- **WebDAV**: deployment may provide an endpoint default; every VOS user saves their own account and password in Settings → Assets & Transcription → Remote media → WebDAV.
+- **AI Album**: inside the same VOS, V-ChatCut first tries the current user's OIDC token for `com.ictrek.ai-album`; if the AI Album API returns 401, or for standalone Immich, each VOS user saves their own API key in Settings → Assets & Transcription → Remote media → AI Album.
 
 Selected external media is copied into V-ChatCut's private `/media/uploads/` area. Existing projects therefore remain usable after a directory grant is revoked or a remote service goes offline, at the cost of additional application storage.
 

@@ -7,7 +7,7 @@ if [ "$(id -u)" = "0" ]; then
   media_parent="$(dirname "$media_dir")"
 
   mkdir -p "${data_dir}/users" "$media_dir"
-  chown node:node "${data_dir}/users" "$media_parent" "$media_dir"
+  chown -R node:node "${data_dir}/users" "$media_parent" "$media_dir"
 
   exec gosu node "$@"
 fi

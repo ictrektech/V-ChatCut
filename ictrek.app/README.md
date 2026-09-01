@@ -51,7 +51,8 @@ authorization; V-ChatCut does not store SMB credentials.
 
 Deployment may provide endpoint defaults. Each authenticated user configures
 their own WebDAV credentials and optional Immich API key in V-ChatCut Settings.
-The same-VOS AI Album route uses the current user's OIDC token by default:
+The same-VOS AI Album route first tries the current user's OIDC token and falls
+back to the user's API key when the target Immich API returns 401:
 
 - `OPENCHATCUT_WEBDAV_URL`, `OPENCHATCUT_WEBDAV_USERNAME`, `OPENCHATCUT_WEBDAV_PASSWORD`
 - `OPENCHATCUT_IMMICH_URL`, `OPENCHATCUT_IMMICH_API_KEY`

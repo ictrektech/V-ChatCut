@@ -211,14 +211,10 @@ function immichVOSAccessToken(url: URL | null): string {
   return currentVOSUser()?.accessToken?.trim() ?? '';
 }
 
-function immichHeaders(base: URL | null, extra?: HeadersInit): Headers {
+function immichHeaders(strategy: 'vos' | 'api-key', base: URL | null, extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
-  const accessToken = immichVOSAccessToken(base);
-  if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
-  else {
-    const apiKey = immichApiKey();
-    if (apiKey) headers.set('x-api-key', apiKey);
-  }
+  if (strategy === 'vos') headers.set('authorization', `Bearer ${immichVOSAccessToken(base)}`);
+  else headers.set('x-api-key', immichApiKey());
   return headers;
 }
 
@@ -227,13 +223,21 @@ async function immichRequest(path: string, init?: RequestInit): Promise<Response
   const hasApiKey = !!immichApiKey();
   const hasVOSAccessToken = !!immichVOSAccessToken(base);
   if (!base || (!hasApiKey && !hasVOSAccessToken)) {
-    throw new Error('AI 相册尚未配置：VOS 内请先完成登录授权，独立 Immich 请在设置中填写 API Key');
+    throw new Error('AI 相册尚未配置：请到 设置 → 素材 · 转写 → 远程素材 → AI 相册 填写地址/API Key');
   }
-  const response = await fetch(new URL(path.replace(/^\//, ''), base), {
+  const url = new URL(path.replace(/^\//, ''), base);
+  const request = (strategy: 'vos' | 'api-key') => fetch(url, {
     ...init,
-    headers: immichHeaders(base, init?.headers),
+    headers: immichHeaders(strategy, base, init?.headers),
   });
-  if (!response.ok) throw new Error(`AI 相册请求失败 (${response.status})`);
+  let response = await request(hasVOSAccessToken ? 'vos' : 'api-key');
+  if (response.status === 401 && hasVOSAccessToken && hasApiKey) response = await request('api-key');
+  if (!response.ok) {
+    if (response.status === 401 && hasVOSAccessToken && !hasApiKey) {
+      throw new Error('AI 相册当前不接受 VOS 同账户 API 调用；请到 设置 → 素材 · 转写 → 远程素材 → AI 相册 填写 API Key');
+    }
+    throw new Error(`AI 相册请求失败 (${response.status})`);
+  }
   return response;
 }
 
@@ -286,13 +290,13 @@ async function providers(): Promise<MediaSourceProvider[]> {
   const immichUsesVOSOAuth = !!immichVOSAccessToken(immich);
   const immichUsesApiKey = !!immichApiKey();
   return [
-    { id: 'vos', label: 'VOS 存储', available: root !== null, detail: root ? '可浏览已授权目录' : '尚未授权目录' },
-    { id: 'webdav', label: 'WebDAV', available: webdav !== null, detail: webdav ? webdav.host : webdavError || '尚未配置' },
+    { id: 'vos', label: 'VOS 存储', available: root !== null, detail: root ? '可浏览已授权目录' : '需管理员在 VOS 安装配置中开启共享 exposed 目录' },
+    { id: 'webdav', label: 'WebDAV', available: webdav !== null, detail: webdav ? webdav.host : webdavError || '设置 → 素材 · 转写 → 远程素材 → WebDAV' },
     {
       id: 'immich', label: 'AI 相册', searchable: true,
       available: immich !== null && (immichUsesVOSOAuth || immichUsesApiKey),
-      detail: immich ? `${immich.host}${immichUsesVOSOAuth ? ' · VOS 同账户授权' : immichUsesApiKey ? ' · API Key' : ''}`
-        : immichError || '尚未配置',
+      detail: immich ? `${immich.host}${immichUsesVOSOAuth ? ' · 优先 VOS 同账户，401 时用 API Key 兜底' : immichUsesApiKey ? ' · API Key' : ' · 请填写 API Key'}`
+        : immichError || '设置 → 素材 · 转写 → 远程素材 → AI 相册',
     },
   ];
 }
