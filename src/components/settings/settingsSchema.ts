@@ -199,6 +199,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               secret('OPENCHATCUT_WEBDAV_PASSWORD', '密码'),
             ] },
           { key: 'remote-media/immich', vendor: 'localdisk', title: 'AI 相册 · Immich',
+            note: 'VOS 内置 AI 相册默认使用当前 VOS 登录用户授权；连接独立 Immich 或需要兜底时，再填写自己的 API Key。',
             fields: [
               text('OPENCHATCUT_IMMICH_URL', 'Immich 地址'),
               secret('OPENCHATCUT_IMMICH_API_KEY', 'API Key'),

@@ -22,6 +22,7 @@ const userA = Object.freeze({
   username: 'alice',
   admin: false,
   namespace: 'a'.repeat(40),
+  accessToken: 'alice-vos-access-token',
 });
 const userB = Object.freeze({
   provider: 'vos-oidc' as const,
@@ -29,6 +30,7 @@ const userB = Object.freeze({
   username: 'bob',
   admin: false,
   namespace: 'b'.repeat(40),
+  accessToken: 'bob-vos-access-token',
 });
 
 try {
@@ -110,6 +112,9 @@ try {
   assert.equal(editorAuth.externalMcpVOSUser({
     headers: { authorization: `Bearer ${mcpB}` },
   } as IncomingMessage)?.namespace, userB.namespace);
+
+  assert.equal(runAsVOSUser(userA, () => userA.accessToken), 'alice-vos-access-token');
+  assert.equal(runAsVOSUser(userB, () => userB.accessToken), 'bob-vos-access-token');
 
   const handoff = runAsVOSUser(userA, () => importTokens.mintImportToken({
     sessionId: 'session-a',

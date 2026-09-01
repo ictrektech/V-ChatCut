@@ -7,6 +7,8 @@ export interface VOSUserContext {
   readonly admin: boolean;
   /** Opaque, filesystem-safe identity derived from provider + immutable subject. */
   readonly namespace: string;
+  /** Current VOS OAuth2 access token, kept in memory for same-user app-to-app calls. */
+  readonly accessToken?: string;
 }
 
 const storage = new AsyncLocalStorage<VOSUserContext>();

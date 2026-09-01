@@ -16,7 +16,7 @@ import {
 const COOKIE_NAME = 'v_chatcut_session';
 const SESSION_TTL_MS = 12 * 60 * 60_000;
 const MAX_BODY_BYTES = 64 * 1024;
-const sessions = new Map<string, { user: VOSUserContext; expiresAt: number }>();
+const sessions = new Map<string, { user: VOSUserContext; accessToken: string; expiresAt: number }>();
 
 function json(res: ServerResponse, status: number, value: unknown, headers: Record<string, string> = {}): void {
   res.writeHead(status, {
@@ -91,7 +91,7 @@ function cookies(req: IncomingMessage): Map<string, string> {
   return result;
 }
 
-function session(req: IncomingMessage): { token: string; user: VOSUserContext } | null {
+function session(req: IncomingMessage): { token: string; user: VOSUserContext; accessToken: string } | null {
   const token = cookies(req).get(COOKIE_NAME) ?? '';
   const found = sessions.get(token);
   if (!found) return null;
@@ -100,7 +100,7 @@ function session(req: IncomingMessage): { token: string; user: VOSUserContext } 
     return null;
   }
   found.expiresAt = Date.now() + SESSION_TTL_MS;
-  return { token, user: found.user };
+  return { token, user: found.user, accessToken: found.accessToken };
 }
 
 function secureRequest(req: IncomingMessage): boolean {
@@ -211,7 +211,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse, pathname: s
       const previous = session(req);
       if (previous) sessions.delete(previous.token);
       const token = randomBytes(32).toString('base64url');
-      sessions.set(token, { user, expiresAt: Date.now() + SESSION_TTL_MS });
+      sessions.set(token, { user, accessToken, expiresAt: Date.now() + SESSION_TTL_MS });
       json(res, 200, {
         authenticated: true,
         user: { username: user.username, namespace: user.namespace },
@@ -236,7 +236,8 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse, pathname: s
     if (!found) { json(res, 401, { error: 'VOS authentication required' }); return true; }
     if (!editorCredentialAuthorized(req, true)) { json(res, 403, { error: 'invalid request origin' }); return true; }
     try {
-      const moved = await runAsVOSUser(found.user, () => claimLegacyData(found.user));
+      const requestUser = Object.freeze({ ...found.user, accessToken: found.accessToken });
+      const moved = await runAsVOSUser(requestUser, () => claimLegacyData(found.user));
       json(res, 200, { moved, restartRequired: moved.length > 0 });
     } catch (error) {
       json(res, 409, { error: error instanceof Error ? error.message : 'legacy migration failed' });
@@ -272,7 +273,7 @@ export function vosAuthPlugin(): Plugin {
           json(res, 401, { error: 'VOS authentication required' });
           return;
         }
-        runAsVOSUser(found.user, next);
+        runAsVOSUser(Object.freeze({ ...found.user, accessToken: found.accessToken }), next);
       });
     },
   };

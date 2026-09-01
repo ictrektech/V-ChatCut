@@ -19,7 +19,7 @@ import { enqueueUploadMutation, mimeFor, uploadDir } from '../media-dir.ts';
 import { maxUploadBytes, readBody, sendError, sendJson } from './upload-route-http.ts';
 import { streamUploadToFile } from './upload-stream.ts';
 import { getKey, type KeyName } from '../keystore.ts';
-import { vosAuthEnabled } from '../vos-user-context.ts';
+import { currentVOSUser, vosAuthEnabled } from '../vos-user-context.ts';
 
 const API_PREFIX = '/api/media-sources';
 const MAX_LIST_ITEMS = 500;
@@ -198,19 +198,40 @@ function immichApiBase(): URL | null {
   return url;
 }
 
-function immichHeaders(extra?: HeadersInit): Headers {
+function immichApiKey(): string {
+  return configured('OPENCHATCUT_IMMICH_API_KEY');
+}
+
+function acceptsVOSAccessToken(url: URL | null): boolean {
+  return !!url && vosAuthEnabled() && /\/app\/com\.ictrek\.ai-album(?:\/|$)/.test(url.pathname);
+}
+
+function immichVOSAccessToken(url: URL | null): string {
+  if (!acceptsVOSAccessToken(url)) return '';
+  return currentVOSUser()?.accessToken?.trim() ?? '';
+}
+
+function immichHeaders(base: URL | null, extra?: HeadersInit): Headers {
   const headers = new Headers(extra);
-  const apiKey = configured('OPENCHATCUT_IMMICH_API_KEY');
-  if (apiKey) headers.set('x-api-key', apiKey);
+  const accessToken = immichVOSAccessToken(base);
+  if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
+  else {
+    const apiKey = immichApiKey();
+    if (apiKey) headers.set('x-api-key', apiKey);
+  }
   return headers;
 }
 
 async function immichRequest(path: string, init?: RequestInit): Promise<Response> {
   const base = immichApiBase();
-  if (!base || !configured('OPENCHATCUT_IMMICH_API_KEY')) throw new Error('AI 相册尚未配置');
+  const hasApiKey = !!immichApiKey();
+  const hasVOSAccessToken = !!immichVOSAccessToken(base);
+  if (!base || (!hasApiKey && !hasVOSAccessToken)) {
+    throw new Error('AI 相册尚未配置：VOS 内请先完成登录授权，独立 Immich 请在设置中填写 API Key');
+  }
   const response = await fetch(new URL(path.replace(/^\//, ''), base), {
     ...init,
-    headers: immichHeaders(init?.headers),
+    headers: immichHeaders(base, init?.headers),
   });
   if (!response.ok) throw new Error(`AI 相册请求失败 (${response.status})`);
   return response;
@@ -262,13 +283,16 @@ async function providers(): Promise<MediaSourceProvider[]> {
   let immichError = '';
   try { webdav = webdavBase(); } catch (error) { webdavError = error instanceof Error ? error.message : String(error); }
   try { immich = immichApiBase(); } catch (error) { immichError = error instanceof Error ? error.message : String(error); }
+  const immichUsesVOSOAuth = !!immichVOSAccessToken(immich);
+  const immichUsesApiKey = !!immichApiKey();
   return [
     { id: 'vos', label: 'VOS 存储', available: root !== null, detail: root ? '可浏览已授权目录' : '尚未授权目录' },
     { id: 'webdav', label: 'WebDAV', available: webdav !== null, detail: webdav ? webdav.host : webdavError || '尚未配置' },
     {
       id: 'immich', label: 'AI 相册', searchable: true,
-      available: immich !== null && !!configured('OPENCHATCUT_IMMICH_API_KEY'),
-      detail: immich ? immich.host : immichError || '尚未配置',
+      available: immich !== null && (immichUsesVOSOAuth || immichUsesApiKey),
+      detail: immich ? `${immich.host}${immichUsesVOSOAuth ? ' · VOS 同账户授权' : immichUsesApiKey ? ' · API Key' : ''}`
+        : immichError || '尚未配置',
     },
   ];
 }

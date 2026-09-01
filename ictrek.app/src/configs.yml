@@ -45,8 +45,8 @@ configs:
       zh-CN: AI 相册地址
       en: AI Album URL
     description:
-      zh-CN: Immich 服务地址；同一 VOS 内留空可自动走平台网关，独立服务可填写 http://192.168.1.10:2283。无需附加 /api。
-      en: Immich service URL. Leave empty to use the VOS gateway, or enter a standalone address such as http://192.168.1.10:2283. Do not append /api.
+      zh-CN: Immich 服务地址；同一 VOS 内留空可自动走平台网关并使用当前用户 OIDC 授权，独立服务可填写 http://192.168.1.10:2283 并在应用设置中填 API Key。无需附加 /api。
+      en: Immich service URL. Leave empty to use the VOS gateway with the current user's OIDC token, or enter a standalone address such as http://192.168.1.10:2283 and save an API key in app settings. Do not append /api.
     default: ""
 
   - name: OPENCHATCUT_VOS_SHARED_EXPOSED_ENABLED
