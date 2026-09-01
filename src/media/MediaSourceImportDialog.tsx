@@ -17,6 +17,7 @@ import './media-source-import.css';
 interface MediaSourceImportDialogProps {
   onClose: () => void;
   onImport: (items: ImportedMediaSource[]) => Promise<void>;
+  onOpenSettings?: () => void;
 }
 
 function sizeLabel(bytes?: number): string {
@@ -42,7 +43,7 @@ function ProviderButton(props: {
   </button>;
 }
 
-export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImportDialogProps) {
+export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: MediaSourceImportDialogProps) {
   const t = useT();
   const [providers, setProviders] = useState<MediaSourceProvider[]>([]);
   const [source, setSource] = useState<MediaSourceId>('vos');
@@ -136,7 +137,10 @@ export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImport
         />)}</aside>
         <main>
           {provider && !provider.available
-            ? <div className="cc-media-source-path"><span>{provider.detail}</span></div>
+            ? <div className="cc-media-source-path">
+              <span>{provider.detail}</span>
+              {onOpenSettings && provider.id !== 'vos' && <button type="button" className="cc-media-source-settings" onClick={() => { onClose(); onOpenSettings(); }}>{t('打开设置')}</button>}
+            </div>
             : provider?.searchable
             ? <form className="cc-media-source-search" onSubmit={(event) => { event.preventDefault(); void load(source, '', query); }}>
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('搜索 AI 相册')} />
@@ -147,7 +151,11 @@ export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImport
               <span>/{path}</span>
             </div>}
           <div className="cc-media-source-list">
-            {provider && !provider.available && <div className="cc-media-source-empty">{provider.detail}</div>}
+            {provider && !provider.available && <div className="cc-media-source-empty">
+              <strong>{t('{source} 尚未配置', { source: provider.label })}</strong>
+              <span>{provider.detail}</span>
+              {onOpenSettings && provider.id !== 'vos' && <button type="button" onClick={() => { onClose(); onOpenSettings(); }}>{t('打开设置')}</button>}
+            </div>}
             {provider?.available && busy && <div className="cc-media-source-empty">{t('正在读取媒体来源…')}</div>}
             {!busy && error && <div className="cc-media-source-error">{error}</div>}
             {provider?.available && !busy && !error && items.length === 0 && <div className="cc-media-source-empty">{t('这里没有可导入的媒体')}</div>}

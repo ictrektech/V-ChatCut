@@ -35,8 +35,8 @@ configs:
       zh-CN: WebDAV 地址
       en: WebDAV URL
     description:
-      zh-CN: 可选。填写 WebDAV 根目录地址后，可从素材库直接浏览并导入媒体。
-      en: Optional WebDAV root URL for browsing and importing media from the media pool.
+      zh-CN: 可选的管理员默认值。用户也可在 V-ChatCut 内进入 设置 → 素材 · 转写 → 远程素材 → WebDAV 填写自己的 WebDAV 地址、用户名和密码。
+      en: Optional administrator default. Users can also configure their own WebDAV URL, username, and password in V-ChatCut Settings → Assets & Transcription → Remote Media → WebDAV.
     default: ""
 
   - name: OPENCHATCUT_IMMICH_URL
@@ -45,8 +45,8 @@ configs:
       zh-CN: AI 相册地址
       en: AI Album URL
     description:
-      zh-CN: Immich 服务地址；同一 VOS 内留空可自动走平台网关并使用当前用户 OIDC 授权，独立服务可填写 http://192.168.1.10:2283 并在应用设置中填 API Key。无需附加 /api。
-      en: Immich service URL. Leave empty to use the VOS gateway with the current user's OIDC token, or enter a standalone address such as http://192.168.1.10:2283 and save an API key in app settings. Do not append /api.
+      zh-CN: Immich/AI 相册服务地址；同一 VOS 内留空会先走平台网关和当前用户授权，如果返回 401 会使用用户在 设置 → 素材 · 转写 → 远程素材 → AI 相册 填写的 API Key 兜底。无需附加 /api。
+      en: Immich/AI Album service URL. Leave empty to try the VOS gateway with the current user's token first; if it returns 401, V-ChatCut falls back to the user's API key saved in Settings → Assets & Transcription → Remote Media → AI Album. Do not append /api.
     default: ""
 
   - name: OPENCHATCUT_VOS_SHARED_EXPOSED_ENABLED

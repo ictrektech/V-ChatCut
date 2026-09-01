@@ -66,6 +66,7 @@ interface MediaPoolPanelProps {
   onRemoveAsset?: (id: string) => void;
   onRemoveAssets?: (ids: string[]) => void;
   onPasteAssets?: (assets: MediaAsset[], folderId?: string) => void;
+  onOpenSettings?: () => void;
   /** Relink File replaces an offline/missing asset and its clip srcs. */
   onRelinkAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Add a solid-color clip. */
@@ -77,7 +78,7 @@ interface MediaPoolPanelProps {
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
   onImport, onImportMobile, directoryImport, directoryImportError, onAddAsset, onAddAssetsToTimeline, onAddAssetsToChat, onCreateFolder, onRenameFolder,
-  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid, onTranscribe,
+  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onOpenSettings, onRelinkAsset, onAddSolid, onTranscribe,
 }: MediaPoolPanelProps) {
   const t = useT();
   const musicAnalysis = useMusicAnalysisCards(assets);
@@ -519,6 +520,7 @@ export function MediaPoolPanel({
       {mediaSourceOpen && <MediaSourceImportDialog
         onClose={() => { setMediaSourceOpen(false); modalFocus.restore(); }}
         onImport={importMediaSources}
+        onOpenSettings={onOpenSettings}
       />}
     </div>
   );
