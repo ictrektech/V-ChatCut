@@ -10,6 +10,7 @@
 .cc-media-source-body aside { display:flex; flex-direction:column; gap:7px; padding:12px; border-right:0.5px solid var(--cc-border); background:var(--cc-panel); }
 .cc-media-source-body aside button { display:flex; flex-direction:column; align-items:flex-start; gap:3px; padding:9px; text-align:left; }
 .cc-media-source-body aside button.active { border-color:var(--cc-accent); background:color-mix(in srgb,var(--cc-accent) 14%,var(--cc-hover)); }
+.cc-media-source-body aside button.unavailable { opacity:.72; }
 .cc-media-source-body aside span { color:var(--cc-text-dim); font-size:10px; }
 .cc-media-source-body main { min-width:0; min-height:0; display:flex; flex-direction:column; }
 .cc-media-source-path,.cc-media-source-search { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:0.5px solid var(--cc-border); }

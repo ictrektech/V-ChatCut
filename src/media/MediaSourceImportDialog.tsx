@@ -34,8 +34,7 @@ function ProviderButton(props: {
 }) {
   return <button
     type="button"
-    className={props.active ? 'active' : ''}
-    disabled={!props.provider.available}
+    className={`${props.active ? 'active' : ''}${props.provider.available ? '' : ' unavailable'}`}
     onClick={props.onClick}
   >
     <strong>{props.provider.label}</strong>
@@ -88,10 +87,18 @@ export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImport
   }, [load]);
 
   const mediaIds = useMemo(() => items.filter((item) => item.kind === 'media').map((item) => item.id), [items]);
-  const selectSource = (next: MediaSourceId) => {
-    setSource(next);
+  const selectSource = (entry: MediaSourceProvider) => {
+    setSource(entry.id);
     setQuery('');
-    void load(next);
+    if (entry.available) void load(entry.id);
+    else {
+      setBusy(false);
+      setError(null);
+      setItems([]);
+      setSelected(new Set());
+      setPath('');
+      setParentPath(undefined);
+    }
   };
   const toggle = (id: string) => setSelected((current) => {
     const next = new Set(current);
@@ -125,10 +132,12 @@ export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImport
           key={entry.id}
           provider={entry}
           active={entry.id === source}
-          onClick={() => selectSource(entry.id)}
+          onClick={() => selectSource(entry)}
         />)}</aside>
         <main>
-          {provider?.searchable
+          {provider && !provider.available
+            ? <div className="cc-media-source-path"><span>{provider.detail}</span></div>
+            : provider?.searchable
             ? <form className="cc-media-source-search" onSubmit={(event) => { event.preventDefault(); void load(source, '', query); }}>
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('搜索 AI 相册')} />
               <button type="submit" disabled={busy}>{t('搜索')}</button>
@@ -138,9 +147,10 @@ export function MediaSourceImportDialog({ onClose, onImport }: MediaSourceImport
               <span>/{path}</span>
             </div>}
           <div className="cc-media-source-list">
-            {busy && <div className="cc-media-source-empty">{t('正在读取媒体来源…')}</div>}
+            {provider && !provider.available && <div className="cc-media-source-empty">{provider.detail}</div>}
+            {provider?.available && busy && <div className="cc-media-source-empty">{t('正在读取媒体来源…')}</div>}
             {!busy && error && <div className="cc-media-source-error">{error}</div>}
-            {!busy && !error && items.length === 0 && <div className="cc-media-source-empty">{t('这里没有可导入的媒体')}</div>}
+            {provider?.available && !busy && !error && items.length === 0 && <div className="cc-media-source-empty">{t('这里没有可导入的媒体')}</div>}
             {!busy && !error && items.map((item) => item.kind === 'folder'
               ? <button type="button" className="cc-media-source-folder" key={item.id} onClick={() => void load(source, item.id)}>
                 <Icon name="folder" size={17} /><span>{item.name}</span><b>›</b>
