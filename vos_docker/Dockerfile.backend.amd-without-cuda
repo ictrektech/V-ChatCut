@@ -43,7 +43,7 @@ RUN npm config set registry https://repo.huaweicloud.com/repository/npm/ \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev \
+    && ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/vos-dist ./vos-dist
