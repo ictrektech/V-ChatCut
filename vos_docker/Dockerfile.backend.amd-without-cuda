@@ -38,7 +38,12 @@ RUN sed -i \
     && apt-get install -y --no-install-recommends ca-certificates chromium curl dumb-init ffmpeg fonts-noto-cjk gosu \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
-RUN ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev \
+RUN npm config set registry https://repo.huaweicloud.com/repository/npm/ \
+    && npm config set fetch-timeout 600000 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && ONNXRUNTIME_NODE_INSTALL=skip ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --omit=dev \
     && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/vos-dist ./vos-dist
