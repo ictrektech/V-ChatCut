@@ -34,6 +34,27 @@ interface ImportCandidate {
   mime?: string;
   modifiedAt?: number;
   stream: NodeJS.ReadableStream;
+  bytes?: number;
+}
+
+function mediaSourcePreviewUrl(source: MediaSourceId, id: string, variant: 'original' | 'thumbnail' = 'original'): string {
+  const params = new URLSearchParams({ source, id });
+  if (variant !== 'original') params.set('variant', variant);
+  return `${API_PREFIX}/preview?${params.toString()}`;
+}
+
+function previewFields(source: MediaSourceId, id: string, mime?: string): Pick<MediaSourceItem, 'previewUrl' | 'thumbnailUrl'> {
+  if (!mime) return { previewUrl: mediaSourcePreviewUrl(source, id) };
+  if (source === 'immich') {
+    return {
+      previewUrl: mediaSourcePreviewUrl(source, id),
+      thumbnailUrl: mediaSourcePreviewUrl(source, id, 'thumbnail'),
+    };
+  }
+  if (mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/')) {
+    return { previewUrl: mediaSourcePreviewUrl(source, id), ...(mime.startsWith('image/') ? { thumbnailUrl: mediaSourcePreviewUrl(source, id) } : {}) };
+  }
+  return {};
 }
 
 function configured(name: string): string {
@@ -100,11 +121,12 @@ async function listVos(rawPath: string): Promise<MediaSourceListResult> {
     if (!info || (!info.isDirectory() && (!info.isFile() || !isMediaName(entry.name)))) continue;
     const id = relative(resolved.root, await realpath(itemPath)).split(sep).join('/');
     if (!id || id.startsWith('../')) continue;
+    const mime = info.isFile() ? mimeFor(entry.name) : undefined;
     items.push({
       id,
       name: entry.name,
       kind: info.isDirectory() ? 'folder' : 'media',
-      ...(info.isFile() ? { bytes: info.size, modifiedAt: info.mtimeMs, mime: mimeFor(entry.name) } : {}),
+      ...(info.isFile() ? { bytes: info.size, modifiedAt: info.mtimeMs, mime, ...previewFields('vos', id, mime) } : {}),
     });
     if (items.length >= MAX_LIST_ITEMS) break;
   }
@@ -174,13 +196,14 @@ async function listWebdav(rawPath: string): Promise<MediaSourceListResult> {
     if (!collection && !isMediaName(name)) continue;
     const bytes = Number(elementText(row, 'getcontentlength'));
     const modified = Date.parse(elementText(row, 'getlastmodified'));
+    const mime = collection ? undefined : elementText(row, 'getcontenttype') || mimeFor(name);
     items.push({
       id,
       name,
       kind: collection ? 'folder' : 'media',
       ...(!collection && Number.isFinite(bytes) ? { bytes } : {}),
       ...(!collection && Number.isFinite(modified) ? { modifiedAt: modified } : {}),
-      ...(!collection ? { mime: elementText(row, 'getcontenttype') || mimeFor(name) } : {}),
+      ...(!collection ? { mime, ...previewFields('webdav', id, mime) } : {}),
     });
   }
   items.sort((left, right) => left.kind === right.kind
@@ -268,12 +291,14 @@ async function listImmich(query: string): Promise<MediaSourceListResult> {
   const items = immichItems(await response.json()).flatMap<MediaSourceItem>((asset) => {
     if (typeof asset.id !== 'string' || typeof asset.originalFileName !== 'string' || !isMediaName(asset.originalFileName)) return [];
     const modified = typeof asset.fileModifiedAt === 'string' ? Date.parse(asset.fileModifiedAt) : Number.NaN;
+    const mime = typeof asset.originalMimeType === 'string' ? asset.originalMimeType : mimeFor(asset.originalFileName);
     return [{
       id: asset.id,
       name: asset.originalFileName,
       kind: 'media',
-      mime: typeof asset.originalMimeType === 'string' ? asset.originalMimeType : mimeFor(asset.originalFileName),
+      mime,
       ...(Number.isFinite(modified) ? { modifiedAt: modified } : {}),
+      ...previewFields('immich', asset.id, mime),
     }];
   });
   return { path: trimmed, items };
@@ -306,7 +331,7 @@ async function localCandidate(id: string): Promise<ImportCandidate> {
   const info = await stat(resolved.path);
   const name = basename(resolved.path);
   if (!isMediaName(name)) throw new Error('unsupported media file');
-  return { name, mime: mimeFor(name), modifiedAt: info.mtimeMs, stream: createReadStream(resolved.path) };
+  return { name, mime: mimeFor(name), modifiedAt: info.mtimeMs, bytes: info.size, stream: createReadStream(resolved.path) };
 }
 
 async function responseCandidate(response: Response, fallbackName: string, modifiedAt?: number): Promise<ImportCandidate> {
@@ -320,6 +345,7 @@ async function responseCandidate(response: Response, fallbackName: string, modif
     name,
     mime: response.headers.get('content-type')?.split(';')[0] || mimeFor(name),
     modifiedAt,
+    bytes: Number(response.headers.get('content-length')) || undefined,
     stream: Readable.fromWeb(response.body as import('node:stream/web').ReadableStream),
   };
 }
@@ -382,6 +408,51 @@ async function handleList(url: URL, res: ServerResponse): Promise<void> {
   sendJson(res, 200, result);
 }
 
+function sendStream(res: ServerResponse, candidate: ImportCandidate): void {
+  res.statusCode = 200;
+  res.setHeader('content-type', candidate.mime || mimeFor(candidate.name));
+  res.setHeader('cache-control', 'private, max-age=60');
+  res.setHeader('content-disposition', `inline; filename="${encodeURIComponent(candidate.name)}"`);
+  if (typeof candidate.bytes === 'number' && Number.isFinite(candidate.bytes)) res.setHeader('content-length', String(candidate.bytes));
+  candidate.stream.on('error', () => {
+    if (!res.headersSent) sendError(res, 500, 'media preview failed');
+    else res.destroy();
+  });
+  candidate.stream.pipe(res);
+}
+
+async function sendResponsePreview(res: ServerResponse, response: Response, fallbackMime = 'application/octet-stream'): Promise<void> {
+  if (!response.ok) throw new Error(`media preview failed (${response.status})`);
+  if (!response.body) throw new Error('media preview returned an empty body');
+  res.statusCode = 200;
+  res.setHeader('content-type', response.headers.get('content-type')?.split(';')[0] || fallbackMime);
+  res.setHeader('cache-control', 'private, max-age=60');
+  const length = response.headers.get('content-length');
+  if (length) res.setHeader('content-length', length);
+  Readable.fromWeb(response.body as import('node:stream/web').ReadableStream).pipe(res);
+}
+
+async function handlePreview(url: URL, res: ServerResponse): Promise<void> {
+  const source = sourceId(url.searchParams.get('source'));
+  const id = url.searchParams.get('id') ?? '';
+  const variant = url.searchParams.get('variant') === 'thumbnail' ? 'thumbnail' : 'original';
+  if (!source || !id || id.length > 2048) { sendError(res, 400, 'invalid media preview request'); return; }
+  if (source === 'vos') {
+    sendStream(res, await localCandidate(id));
+    return;
+  }
+  if (source === 'webdav') {
+    const response = await fetch(webdavUrl(id), { headers: webdavHeaders() });
+    await sendResponsePreview(res, response, mimeFor(id));
+    return;
+  }
+  if (!/^[A-Za-z0-9-]{1,80}$/.test(id)) throw new Error('invalid AI album asset id');
+  const endpoint = variant === 'thumbnail'
+    ? `assets/${encodeURIComponent(id)}/thumbnail?size=thumbnail`
+    : `assets/${encodeURIComponent(id)}/original`;
+  await sendResponsePreview(res, await immichRequest(endpoint), variant === 'thumbnail' ? 'image/jpeg' : 'application/octet-stream');
+}
+
 async function handleImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = JSON.parse((await readBody(req)).toString('utf8')) as { source?: unknown; ids?: unknown };
   const source = sourceId(body.source);
@@ -409,6 +480,8 @@ export function mediaSourceImportPlugin(): Plugin {
             sendJson(res, 200, { providers: await providers() });
           } else if (req.method === 'GET' && url.pathname === `${API_PREFIX}/list`) {
             await handleList(url, res);
+          } else if (req.method === 'GET' && url.pathname === `${API_PREFIX}/preview`) {
+            await handlePreview(url, res);
           } else if (req.method === 'POST' && url.pathname === `${API_PREFIX}/import`) {
             await handleImport(req, res);
           } else {

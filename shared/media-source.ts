@@ -15,6 +15,8 @@ export interface MediaSourceItem {
   bytes?: number;
   modifiedAt?: number;
   mime?: string;
+  previewUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface MediaSourceListResult {

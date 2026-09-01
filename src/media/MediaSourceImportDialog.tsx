@@ -43,6 +43,48 @@ function ProviderButton(props: {
   </button>;
 }
 
+function isImage(item?: MediaSourceItem): boolean {
+  return !!item?.mime?.startsWith('image/');
+}
+
+function isVideo(item?: MediaSourceItem): boolean {
+  return !!item?.mime?.startsWith('video/');
+}
+
+function isAudio(item?: MediaSourceItem): boolean {
+  return !!item?.mime?.startsWith('audio/');
+}
+
+function MediaSourceThumb({ item }: { item: MediaSourceItem }) {
+  if (isImage(item) && (item.thumbnailUrl || item.previewUrl)) {
+    return <img src={item.thumbnailUrl ?? item.previewUrl} alt="" loading="lazy" />;
+  }
+  return <span className="cc-media-source-thumb-fallback">{isVideo(item) ? '🎬' : isAudio(item) ? '♪' : '□'}</span>;
+}
+
+function MediaSourcePreview({ item }: { item?: MediaSourceItem }) {
+  const t = useT();
+  if (!item) {
+    return <div className="cc-media-source-preview-empty">
+      <strong>{t('选择素材预览')}</strong>
+      <span>{t('点选左侧素材后可在导入前查看内容。')}</span>
+    </div>;
+  }
+  return <div className="cc-media-source-preview-card">
+    <div className="cc-media-source-preview-stage">
+      {isImage(item) && item.previewUrl
+        ? <img src={item.previewUrl} alt={item.name} />
+        : isVideo(item) && item.previewUrl
+        ? <video src={item.previewUrl} controls preload="metadata" />
+        : isAudio(item) && item.previewUrl
+        ? <audio src={item.previewUrl} controls />
+        : <span>{t('该素材暂不支持预览')}</span>}
+    </div>
+    <strong title={item.name}>{item.name}</strong>
+    <small>{[item.mime, sizeLabel(item.bytes)].filter(Boolean).join(' · ')}</small>
+  </div>;
+}
+
 export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: MediaSourceImportDialogProps) {
   const t = useT();
   const [providers, setProviders] = useState<MediaSourceProvider[]>([]);
@@ -51,6 +93,7 @@ export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: M
   const [parentPath, setParentPath] = useState<string>();
   const [items, setItems] = useState<MediaSourceItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +131,19 @@ export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: M
   }, [load]);
 
   const mediaIds = useMemo(() => items.filter((item) => item.kind === 'media').map((item) => item.id), [items]);
+  const previewItem = useMemo(() => {
+    if (previewId) {
+      const current = items.find((item) => item.id === previewId && item.kind === 'media');
+      if (current) return current;
+    }
+    return items.find((item) => item.kind === 'media');
+  }, [items, previewId]);
+  useEffect(() => {
+    setPreviewId((current) => {
+      if (current && items.some((item) => item.id === current && item.kind === 'media')) return current;
+      return items.find((item) => item.kind === 'media')?.id ?? null;
+    });
+  }, [items]);
   const selectSource = (entry: MediaSourceProvider) => {
     setSource(entry.id);
     setQuery('');
@@ -97,6 +153,7 @@ export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: M
       setError(null);
       setItems([]);
       setSelected(new Set());
+      setPreviewId(null);
       setPath('');
       setParentPath(undefined);
     }
@@ -163,12 +220,16 @@ export function MediaSourceImportDialog({ onClose, onImport, onOpenSettings }: M
               ? <button type="button" className="cc-media-source-folder" key={item.id} onClick={() => void load(source, item.id)}>
                 <Icon name="folder" size={17} /><span>{item.name}</span><b>›</b>
               </button>
-              : <label className="cc-media-source-item" key={item.id}>
+              : <label className={`cc-media-source-item${previewItem?.id === item.id ? ' previewing' : ''}`} key={item.id} onClick={() => setPreviewId(item.id)}>
                 <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} />
+                <MediaSourceThumb item={item} />
                 <span title={item.name}>{item.name}</span><small>{sizeLabel(item.bytes)}</small>
               </label>)}
           </div>
         </main>
+        <section className="cc-media-source-preview">
+          <MediaSourcePreview item={previewItem} />
+        </section>
       </div>
       <footer>
         <button type="button" disabled={!mediaIds.length || busy} onClick={toggleAll}>{selected.size === mediaIds.length && mediaIds.length ? t('取消全选') : t('全选')}</button>
