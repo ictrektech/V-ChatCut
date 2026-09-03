@@ -16,6 +16,10 @@ The VOS icon is `src/icon.png`, a 256×256 8-bit RGBA PNG with transparent
 corners. `package.sh` stages it at the root of `app.tar.gz` and validates its
 PNG dimensions and color type before producing the pull package.
 
+`routers.yml` declares a single top-level `page` (`id: v-chatcut`) with
+`entry-point: true`. VOS shows V-ChatCut through the application drawer and no
+longer creates an extra grouped subpage in the sidebar.
+
 ## VOS identity and data isolation
 
 The package uses the OIDC Fastpath declared in `manifest.yml`. The backend

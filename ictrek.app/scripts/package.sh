@@ -3,9 +3,8 @@ set -euo pipefail
 
 APP_NAME="v_chatcut"
 APP_ID="com.ictrek.v-chatcut"
-ROUTER_GROUP_ID="com-ictrek-v-chatcut"
 ROUTER_PAGE_ID="v-chatcut"
-ROUTER_HASH_PATH="#/app/com.ictrek.v-chatcut/com-ictrek-v-chatcut/v-chatcut"
+ROUTER_HASH_PATH="#/app/com.ictrek.v-chatcut/v-chatcut"
 FRONTEND_BASE_PATH="/app/com.ictrek.v-chatcut"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -170,9 +169,10 @@ PY
     || die "manifest frontend basePath is invalid"
 
   routers_text="$(tar xOf "$app_tarball" routers.yml)"
-  printf '%s\n' "$routers_text" | grep -Fq "  - id: ${ROUTER_GROUP_ID}" || die "router group id is invalid"
-  printf '%s\n' "$routers_text" | grep -Fq "      - id: ${ROUTER_PAGE_ID}" || die "router page id is invalid"
-  printf '%s\n' "$routers_text" | grep -Fq "        iframe-src: /app/${APP_ID}/?v=${APP_VERSION}" \
+  printf '%s\n' "$routers_text" | grep -Fq "  - id: ${ROUTER_PAGE_ID}" || die "router page id is invalid"
+  printf '%s\n' "$routers_text" | grep -Fq "    kind: page" || die "router must be a top-level page"
+  ! printf '%s\n' "$routers_text" | grep -q 'kind:[[:space:]]*group' || die "router must not declare a group"
+  printf '%s\n' "$routers_text" | grep -Fq "    iframe-src: /app/${APP_ID}/?v=${APP_VERSION}" \
     || die "router iframe-src is invalid"
   printf '%s\n' "$routers_text" | grep -q 'entry-point:[[:space:]]*true' || die "entry-point is missing"
   printf '%s\n' "$routers_text" | grep -q 'embed:[[:space:]]*true' || die "embed is missing"
