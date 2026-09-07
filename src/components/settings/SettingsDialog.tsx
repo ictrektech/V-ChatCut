@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { theme } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { Icon } from '../icons';
@@ -16,18 +16,6 @@ import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorP
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
 import { stageFieldValue } from './codexReasoning';
-import { SettingsVersionControl } from './SettingsVersionControl';
-import {
-  CURRENT_APP_VERSION,
-  formatDisplayVersion,
-  getUpstreamUpdateState,
-  hasDesktopUpdateSupport,
-  subscribeUpstreamUpdate,
-} from '../../ui/upstreamUpdate';
-import {
-  resolveUpstreamUpdateAction,
-  runUpstreamUpdateCommand,
-} from '../../ui/upstreamUpdateAction';
 import {
   buildPatch, categoryGroupStats, groupConfigured, settingsCategoriesForStatus,
   modelValue, omitKey, savedMessage, vendorConfigured,
@@ -245,11 +233,6 @@ function useFieldContext(
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
-  const updateState = useSyncExternalStore(
-    subscribeUpstreamUpdate,
-    getUpstreamUpdateState,
-    getUpstreamUpdateState,
-  );
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
   const settingsCategories = useMemo(() => settingsCategoriesForStatus(status), [status]);
@@ -284,8 +267,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { requestClose, warn } = useCloseGuard(dirty, onClose);
   useEscape(requestClose);
 
-  const updateAction = resolveUpstreamUpdateAction(updateState, hasDesktopUpdateSupport());
-
   const codexStatus = ctx.codex.status;
 
   const shownError = error ?? loadError;
@@ -302,12 +283,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <b style={{ fontSize: 14 }}>{t('设置 · API 密钥')}</b>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <SettingsVersionControl
-              versionLabel={t('当前版本号：{version}', { version: formatDisplayVersion(CURRENT_APP_VERSION) })}
-              actionLabel={updateAction.label}
-              disabled={updateAction.disabled}
-              onAction={() => { runUpstreamUpdateCommand(updateAction.command); }}
-            />
             <button type="button" onClick={requestClose} title={t('关闭')} style={iconBtn}><Icon name="x" size={15} /></button>
           </div>
         </header>

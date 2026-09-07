@@ -9,6 +9,7 @@ import { ALL_LOCALES, getLocale, setLocale, useT } from '../i18n/locale';
 import { invokeAction, bindAction } from '../shortcuts/actionRegistry';
 import { DesktopWindowControls } from './DesktopWindowControls';
 import { TopBarIconButton } from './TopBarIconButton';
+import { AboutButton } from './AboutButton';
 
 // Language switching: The text pill displays the current language; clicking
 // cycles through the supported locales. First run defaults to the
@@ -98,6 +99,7 @@ export function TopBar({ projectId, projectName, canUndo, canRedo, exporting, ex
       {/* self-contained: trigger + popover, global export history, zero props */}
       <ExportHistory />
       <LocaleToggle />
+      <AboutButton />
       <TopBarIconButton icon="layoutPanel" label={t('切换面板布局')} onClick={() => invokeAction('toggle-layout', undefined, 'toolbar')} />
       <button onClick={() => invokeAction('open-export', undefined, 'toolbar')}
         className="cc-tip cc-tip-r"

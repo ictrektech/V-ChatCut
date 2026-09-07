@@ -13,6 +13,7 @@ import { useDashboardDialogPrefetch } from './dashboardDialogLoaders';
 import { StorageMigrationBanner } from '../settings/StorageMigrationBanner';
 import { SkinPicker } from '../settings/SkinPicker';
 import { LocaleToggle } from '../TopBar';
+import { AboutButton } from '../AboutButton';
 import {
   card, importBtn, miniBtn, modelSetupButton, modelSetupCard, modelSetupIcon,
   nameInput, newCard, searchBox, searchClear, searchEmpty, searchIcon, searchInput,
@@ -72,6 +73,7 @@ export function DashboardTitlebarContent({ model }: { model: DashboardModel }) {
         <SkinPicker />
         <button onClick={() => model.setDialog('storage', true)} data-tip={t('数据存储')} aria-label={t('数据存储')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}><Icon name="database" size={16} /></button>
         <button onClick={() => model.setDialog('settings', true)} data-tip={t('设置 · API 密钥')} aria-label={t('设置 · API 密钥')} className="cc-header-btn cc-tip cc-tip-r" style={settingsBtn}><Icon name="sliders" size={16} /></button>
+        <AboutButton />
       </span>
     </>
   );

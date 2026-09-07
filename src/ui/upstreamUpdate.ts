@@ -6,8 +6,21 @@ import type {
 export const UPSTREAM_LATEST_RELEASE_URL = 'https://api.github.com/repos/ictrektech/V-ChatCut/releases/latest';
 export const UPSTREAM_RELEASES_URL = 'https://github.com/ictrektech/V-ChatCut/releases';
 
-export const CURRENT_APP_VERSION =
+export let CURRENT_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+
+let runtimeVersionRequest: Promise<string> | null = null;
+
+export function loadCurrentAppVersion(): Promise<string> {
+  runtimeVersionRequest ??= fetch('/api/runtime-info')
+    .then((response) => response.ok ? response.json() : Promise.reject())
+    .then((body: { version?: string | null }) => {
+      if (body.version?.trim()) CURRENT_APP_VERSION = body.version.trim();
+      return CURRENT_APP_VERSION;
+    })
+    .catch(() => CURRENT_APP_VERSION);
+  return runtimeVersionRequest;
+}
 
 type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 type CheckSource = 'auto' | 'manual';
@@ -205,6 +218,7 @@ export function dismissUpstreamUpdate(): void {
 }
 
 async function requestWebUpdateCheck(source: CheckSource): Promise<void> {
+  await loadCurrentAppVersion();
   const sequence = ++requestSequence;
   activeController?.abort();
   const controller = new AbortController();
