@@ -1,5 +1,7 @@
 # V-ChatCut
 
+安装后从 VOS 顶层导航的 **V-ChatCut** 入口打开应用。
+
 V-ChatCut 是本地优先、Agent 驱动的多轨视频编辑器，支持素材管理、字幕、动效、智能分析、媒体生成和视频导出。
 
 ## Profile

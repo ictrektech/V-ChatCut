@@ -2,8 +2,8 @@ routers:
   - id: v-chatcut
     kind: page
     title:
-      zh-CN: 视频编辑
-      en: Video Editor
+      zh-CN: V-ChatCut
+      en: V-ChatCut
     icon: lucide:clapperboard
     order: 220
     iframe-src: /app/com.ictrek.v-chatcut/?v=__APP_VERSION__
