@@ -38,7 +38,7 @@ import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 
 export type VendorId =
-  | 'llm' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
+  | 'llm' | 'ictrek' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
@@ -92,6 +92,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 
 // Official SVG not included / Non-provider brand → monogram
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
+  ictrek: { bg: '#2463eb', mono: 'IC', fg: '#ffffff' },
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)

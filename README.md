@@ -272,6 +272,7 @@ the legacy shared development store.
 ### Built-in Agent authentication
 
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.
+- **ICTrek tokens:** open **Settings → Agent model → ICTrek · 芯途异构** and enter your [ICTrek](https://ai.ictrek.com) token. The independent provider defaults to `https://ai.ictrek.com/v1` and uses OpenAI-compatible Chat Completions. Test the connection and select a model available to your token; `LLM_ICTREK_API_KEY`, `LLM_ICTREK_BASE_URL`, and `LLM_ICTREK_MODEL` are stored separately from OpenAI settings.
 - **ChatGPT subscription:** install the official Codex CLI 0.146.0 or newer, then open **Settings → Agent model → OpenAI · Codex**. Sign in through the browser or device-code flow, load the account's models, choose a model-specific reasoning effort (or keep its default), and select Codex from the chat model picker. OpenChatCut uses a dedicated Codex profile; the official CLI owns credential storage, token renewal, and logout, while OAuth tokens are never exposed to the browser.
 - **Claude subscription:** OpenChatCut does not collect Claude OAuth credentials. Use Claude Code through the local MCP connection below. The built-in Agent can use Anthropic through an API key.
 

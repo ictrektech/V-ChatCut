@@ -32,6 +32,8 @@ assert.equal(resolveLlmBaseUrl('gemini', ''), 'https://generativelanguage.google
 assert.equal(resolveLlmBaseUrl('openai', 'https://api.openai.com', ''), 'https://api.openai.com/v1');
 assert.equal(resolveLlmBaseUrl('anthropic', 'https://relay.test/api', ''), 'https://relay.test/api/v1');
 assert.equal(llmOperationPath('kimi'), '/chat/completions');
+assert.equal(resolveLlmBaseUrl('ictrek', ''), 'https://ai.ictrek.com/v1');
+assert.equal(llmOperationPath('ictrek'), '/chat/completions');
 
 // ── llmHeaders: Inject upstream authentication according to the protocol (google=x-goog-api-key;anthropic=x-api-key; the rest Bearer) ──
 {
@@ -42,10 +44,12 @@ assert.equal(llmOperationPath('kimi'), '/chat/completions');
     LLM_PROVIDER: 'anthropic',
     LLM_GEMINI_API_KEY: 'gk-1',
     LLM_MINIMAX_API_KEY: 'mk-1',
+    LLM_ICTREK_API_KEY: 'ictrek-test-key',
     LLM_XAI_OAUTH_API_KEY: 'stale-oauth-token',
     LLM_API_KEY: 'ak-1',
   } as Record<string, string>);
   const reqFor = (provider: string) => ({ headers: { 'x-openchatcut-provider': provider } } as never);
+  assert.deepEqual(llmHeaders(reqFor('ictrek')), { authorization: 'Bearer ictrek-test-key' }, 'ICTrek uses its own token');
   assert.deepEqual(llmHeaders(reqFor('gemini')), { 'x-goog-api-key': 'gk-1' }, 'gemini 原生协议注入 x-goog-api-key');
   assert.deepEqual(llmHeaders(reqFor('minimax')), { authorization: 'Bearer mk-1' }, 'openai-compatible 厂商 Bearer');
   assert.deepEqual(llmHeaders(reqFor('anthropic')), { 'x-api-key': 'ak-1', 'anthropic-version': '2023-06-01' }, 'anthropic x-api-key(经遗留迁移)');

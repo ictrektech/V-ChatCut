@@ -30,6 +30,7 @@ const MODES: readonly { value: VisionModelMode; label: string; hint: string }[] 
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
+  ictrek: 'ICTrek · 芯途异构',
   gemini: 'Google Gemini',
   kimi: 'Kimi',
   qwen: 'Qwen',

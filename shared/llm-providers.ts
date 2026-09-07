@@ -28,6 +28,13 @@ export const LLM_PROVIDER_PRESETS = [
     defaultModel: 'gpt-5',
   },
   {
+    id: 'ictrek',
+    label: 'ICTrek · 芯途异构',
+    protocol: 'openai-compatible',
+    baseUrl: 'https://ai.ictrek.com/v1',
+    defaultModel: 'gpt-5',
+  },
+  {
     id: 'gemini',
     label: 'Google · Gemini',
     protocol: 'google',
