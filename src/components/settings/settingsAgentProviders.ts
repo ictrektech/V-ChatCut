@@ -14,17 +14,21 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
     title: preset.label,
     note: preset.id === 'anthropic'
       ? '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。'
-      : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
+      : preset.id === 'ictrek'
+        ? '请先前往 ai.ictrek.com 注册账户并申请 API Token，再将 Token 填入下方 API Key，测试连接并选择可用模型。'
+        : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
     ...(preset.id === 'anthropic'
       ? { noteAction: { label: '外部 Agent 接入 (MCP)', action: 'open-mcp-guide' } }
-      : {}),
+      : preset.id === 'ictrek'
+        ? { noteAction: { label: '前往 ai.ictrek.com 注册并申请 Token', href: 'https://ai.ictrek.com' } }
+        : {}),
     fields: [
       {
         name: names.baseUrl,
         label: 'API URL',
         kind: 'text',
         defaultLabel: preset.baseUrl,
-        note: '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。',
+        note: preset.id === 'ictrek' ? '默认地址已配置，无需修改；请使用在 ai.ictrek.com 申请的 Token。' : '填写完整 API 前缀；可使用官方地址、自建网关或兼容中转。',
       },
       secret(names.apiKey, isLocalLlmProvider(preset.id) ? 'API Key（可选）' : 'API Key'),
       ...(preset.id === 'openai' ? [{

@@ -30,7 +30,7 @@ export interface SettingsVendorPage {
    *  under Anthropic tells Claude Code subscribers where to go (the external
    *  MCP panel) without giving them any way to get there; naming a destination
    *  the reader cannot reach is what made the only entry path undiscoverable. */
-  readonly noteAction?: { readonly label: string; readonly action: string };
+  readonly noteAction?: { readonly label: string } & ({ readonly action: string } | { readonly href: string });
 }
 
 export interface SettingsGroup {

@@ -7,6 +7,9 @@ type NoteAction = NonNullable<SettingsVendorPage['noteAction']>;
 
 export function SettingsNoteAction({ config }: { config: NoteAction }) {
   const t = useT();
+  if ('href' in config) {
+    return <a href={config.href} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 7, color: theme.text, textDecoration: 'underline' }}>{t(config.label)}</a>;
+  }
   return (
     <button
       type="button"

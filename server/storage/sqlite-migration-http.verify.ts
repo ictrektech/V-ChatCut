@@ -15,6 +15,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'occ-migrate-http-verify-'));
+  const previousSwitch = process.env.OPENCHATCUT_SQLITE_STORE;
+  process.env.OPENCHATCUT_SQLITE_STORE = '0'; // Exercise the explicit legacy/manual path.
   const previousHome = process.env.HOME;
   process.env.HOME = root;
 
@@ -101,6 +103,7 @@ async function main(): Promise<void> {
     await store.setStoredEntry('thumb:http-1', { t: true });
 
     // 4. Write with the loopback same-origin shape → 200, all keys imported.
+    delete process.env.OPENCHATCUT_SQLITE_STORE;
     const migrate = await request('/migrate', { method: 'POST' });
     assert.equal(migrate.status, 200, 'loopback same-origin requests must authorize migrate');
     const migrateBody = await migrate.json() as { summary: { imported: number }; enabled: boolean };
@@ -121,6 +124,8 @@ async function main(): Promise<void> {
 
     console.log('✓ migrate-http verify: read-status / no-origin 403 / seed / loopback migrate / status-after / idempotent all passed');
   } finally {
+    if (previousSwitch === undefined) delete process.env.OPENCHATCUT_SQLITE_STORE;
+    else process.env.OPENCHATCUT_SQLITE_STORE = previousSwitch;
     serverHandle.close();
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;

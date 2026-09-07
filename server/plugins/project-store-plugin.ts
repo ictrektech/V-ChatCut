@@ -33,6 +33,7 @@ import { searchContent } from '../storage/fulltext-search.ts';
 import { hybridSearch } from '../storage/hybrid-search.ts';
 import {
   cleanupLegacyJson,
+  initializeSqliteProjectStore,
   runStorageMigration,
   sqliteMigrationStatus,
 } from '../storage/sqlite-store.ts';
@@ -93,7 +94,7 @@ export function projectStorePlugin(options: { http?: boolean } = {}): Plugin {
             sendProjectStoreJson(res, 403, { error: 'invalid project store session' });
             return;
           }
-          sendProjectStoreJson(res, 200, sqliteMigrationStatus());
+          sendProjectStoreJson(res, 200, await initializeSqliteProjectStore());
           return;
         }
         if (req.method === 'POST' && req.url === '/migrate-cleanup') {

@@ -10,7 +10,7 @@ FRONTEND_COMPONENT="v-chatcut-frontend"
 BACKEND_REPOSITORY="${REGISTRY}/${BACKEND_COMPONENT}"
 FRONTEND_REPOSITORY="${REGISTRY}/${FRONTEND_COMPONENT}"
 FEISHU_HELPER="${ROOT_DIR}/vos_docker/feishu_components.py"
-VERSION_FILE="${ROOT_DIR}/ictrek.app/VERSION"
+VOS_APP_VERSION=""
 
 TARGET_SHEETS=()
 COMPONENTS=()
@@ -64,13 +64,13 @@ frontend_sheets() {
 usage() {
   cat <<'EOF'
 Usage:
-  ./vos_docker/build_image.sh --sheet AMD_with_cuda [--component backend|frontend]
-  ./vos_docker/build_image.sh --sheet ARM_with_cuda --sheet l4t
+  ./vos_docker/build_image.sh --app-version 0.0.15 --sheet AMD_with_cuda [--component backend|frontend]
+  ./vos_docker/build_image.sh --app-version 0.0.15 --sheet ARM_with_cuda --sheet l4t
 
 Supported sheets:
   AMD_with_cuda, AMD_with_mxn100, ARM_with_cuda, ARM_without_cuda, l4t, thor_spark
 
-At least one --sheet is required. Backends are profile-specific. A frontend is
+An explicit --app-version and at least one --sheet are required. Backends are profile-specific. A frontend is
 built once per selected CPU architecture and its shared tag is written to every
 matching architecture sheet.
 EOF
@@ -78,6 +78,11 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --app-version)
+      [[ -n "${2:-}" ]] || die "--app-version requires a value"
+      VOS_APP_VERSION="$2"
+      shift 2
+      ;;
     --sheet)
       [[ -n "${2:-}" ]] || die "--sheet requires a value"
       TARGET_SHEETS+=("$2")
@@ -96,6 +101,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ "$VOS_APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "--app-version requires the target VOS version (X.Y.Z)"
 [[ ${#TARGET_SHEETS[@]} -gt 0 ]] || die "at least one --sheet is required"
 [[ ${#COMPONENTS[@]} -gt 0 ]] || COMPONENTS=(backend frontend)
 for component in "${COMPONENTS[@]}"; do
@@ -138,11 +144,8 @@ require_cmd docker
 require_cmd python3
 docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 [[ -f "$FEISHU_HELPER" ]] || die "missing Feishu helper: $FEISHU_HELPER"
-[[ -f "$VERSION_FILE" ]] || die "missing VOS version file: $VERSION_FILE"
 
 DATE="$(date +%Y%m%d)"
-VOS_APP_VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
-[[ "$VOS_APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid VOS app version: $VOS_APP_VERSION"
 NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-bookworm-slim}"
 FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-alpine}"
 NGINX_BASE_IMAGE="${V_CHATCUT_NGINX_BASE_IMAGE:-${REGISTRY}/nginx:${HOST_ARCH}_1.29-alpine}"
@@ -154,7 +157,7 @@ if contains frontend "${COMPONENTS[@]}"; then
     contains "$target_arch" "${selected_arches[@]:-}" || selected_arches+=("$target_arch")
   done
   for target_arch in "${selected_arches[@]}"; do
-    tag="${target_arch}_${DATE}"
+    tag="${target_arch}_${DATE}_v${VOS_APP_VERSION}"
     image="${FRONTEND_REPOSITORY}:${tag}"
     log "Build shared ${target_arch} frontend: ${image}"
     docker buildx build \
@@ -185,7 +188,7 @@ fi
 if contains backend "${COMPONENTS[@]}"; then
   for sheet in "${TARGET_SHEETS[@]}"; do
     IFS='|' read -r profile tag_prefix dockerfile _ <<< "$(sheet_spec "$sheet")"
-    tag="${tag_prefix}_${DATE}"
+    tag="${tag_prefix}_${DATE}_v${VOS_APP_VERSION}"
     image="${BACKEND_REPOSITORY}:${tag}"
     log "Build ${profile} backend: ${image}"
     docker buildx build \

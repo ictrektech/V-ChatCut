@@ -43,7 +43,7 @@ transparent master. The browser and embedded page use the 512×512
 ## Build and publish images
 
 `build_image.sh` must run on the matching architecture host and requires an
-explicit Feishu sheet. It never connects to another build host itself.
+explicit Feishu sheet and target VOS app version (`--app-version`). It never connects to another build host itself.
 
 Build-host assignments are enforced from the machine architecture and Jetson
 release: tc232 builds both AMD profiles, tc192 (L4T R36) builds ARM CPU and
@@ -56,25 +56,25 @@ manually, and the application process does not remain privileged.
 
 ```bash
 # Build both the shared AMD frontend and AMD CUDA backend.
-./vos_docker/build_image.sh --sheet AMD_with_cuda
+./vos_docker/build_image.sh --app-version 0.0.15 --sheet AMD_with_cuda
 
 # Build only an ARM CPU backend.
-./vos_docker/build_image.sh --sheet ARM_without_cuda --component backend
+./vos_docker/build_image.sh --app-version 0.0.15 --sheet ARM_without_cuda --component backend
 
 # Build the shared ARM frontend once and write the same tag to all ARM sheets.
-./vos_docker/build_image.sh --sheet ARM_with_cuda --component frontend
+./vos_docker/build_image.sh --app-version 0.0.15 --sheet ARM_with_cuda --component frontend
 ```
 
 Sheet mapping:
 
 | Feishu sheet | Backend tag prefix | Profile |
 | --- | --- | --- |
-| `AMD_with_cuda` | `amd_cu128_YYYYMMDD` | `amd-with-cuda` |
-| `AMD_with_mxn100` | `amd_YYYYMMDD` | `amd-without-cuda` |
-| `ARM_with_cuda` | `arm_cu128_YYYYMMDD` | `arm-with-cuda` |
-| `ARM_without_cuda` | `arm_YYYYMMDD` | `arm-without-cuda` |
-| `l4t` | `l4t_YYYYMMDD` | `l4t` |
-| `thor_spark` | `thor_YYYYMMDD` | `thor-spark` |
+| `AMD_with_cuda` | `amd_cu128_YYYYMMDD_vX.Y.Z` | `amd-with-cuda` |
+| `AMD_with_mxn100` | `amd_YYYYMMDD_vX.Y.Z` | `amd-without-cuda` |
+| `ARM_with_cuda` | `arm_cu128_YYYYMMDD_vX.Y.Z` | `arm-with-cuda` |
+| `ARM_without_cuda` | `arm_YYYYMMDD_vX.Y.Z` | `arm-without-cuda` |
+| `l4t` | `l4t_YYYYMMDD_vX.Y.Z` | `l4t` |
+| `thor_spark` | `thor_YYYYMMDD_vX.Y.Z` | `thor-spark` |
 
 The script expects Feishu credentials in `~/.feishu.json` or
 `~/.feishu.components.json`. Registry and base images can be overridden with
@@ -85,3 +85,9 @@ defaults are the architecture-specific mirrors under
 intentionally not provided. Backend system packages default to Huawei Cloud's
 Debian mirrors; `DEBIAN_MIRROR` and `DEBIAN_SECURITY_MIRROR` remain build-arg
 overrides for an installation that maintains its own APT mirror.
+
+Before a release, build every affected image with the version that
+`ictrek.app/scripts/update_version.sh` will publish (for example, `0.0.15`
+when VERSION is `0.0.14`). After image verification, run the version script.
+The explicit version is compiled into the settings header; versioned image
+tags keep same-day releases separate. Do not edit VERSION manually.
