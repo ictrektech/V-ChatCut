@@ -10,7 +10,6 @@ FRONTEND_COMPONENT="v-chatcut-frontend"
 BACKEND_REPOSITORY="${REGISTRY}/${BACKEND_COMPONENT}"
 FRONTEND_REPOSITORY="${REGISTRY}/${FRONTEND_COMPONENT}"
 FEISHU_HELPER="${ROOT_DIR}/vos_docker/feishu_components.py"
-VOS_APP_VERSION=""
 
 TARGET_SHEETS=()
 COMPONENTS=()
@@ -64,13 +63,13 @@ frontend_sheets() {
 usage() {
   cat <<'EOF'
 Usage:
-  ./vos_docker/build_image.sh --app-version 0.0.15 --sheet AMD_with_cuda [--component backend|frontend]
-  ./vos_docker/build_image.sh --app-version 0.0.15 --sheet ARM_with_cuda --sheet l4t
+  ./vos_docker/build_image.sh --sheet AMD_with_cuda [--component backend|frontend]
+  ./vos_docker/build_image.sh --sheet ARM_with_cuda --sheet l4t
 
 Supported sheets:
   AMD_with_cuda, AMD_with_mxn100, ARM_with_cuda, ARM_without_cuda, l4t, thor_spark
 
-An explicit --app-version and at least one --sheet are required. Backends are profile-specific. A frontend is
+At least one --sheet is required. Backends are profile-specific. A frontend is
 built once per selected CPU architecture and its shared tag is written to every
 matching architecture sheet.
 EOF
@@ -78,11 +77,6 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --app-version)
-      [[ -n "${2:-}" ]] || die "--app-version requires a value"
-      VOS_APP_VERSION="$2"
-      shift 2
-      ;;
     --sheet)
       [[ -n "${2:-}" ]] || die "--sheet requires a value"
       TARGET_SHEETS+=("$2")
@@ -101,7 +95,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$VOS_APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "--app-version requires the target VOS version (X.Y.Z)"
 [[ ${#TARGET_SHEETS[@]} -gt 0 ]] || die "at least one --sheet is required"
 [[ ${#COMPONENTS[@]} -gt 0 ]] || COMPONENTS=(backend frontend)
 for component in "${COMPONENTS[@]}"; do
@@ -157,7 +150,7 @@ if contains frontend "${COMPONENTS[@]}"; then
     contains "$target_arch" "${selected_arches[@]:-}" || selected_arches+=("$target_arch")
   done
   for target_arch in "${selected_arches[@]}"; do
-    tag="${target_arch}_${DATE}_v${VOS_APP_VERSION}"
+    tag="${target_arch}_${DATE}"
     image="${FRONTEND_REPOSITORY}:${tag}"
     log "Build shared ${target_arch} frontend: ${image}"
     docker buildx build \
@@ -168,7 +161,6 @@ if contains frontend "${COMPONENTS[@]}"; then
       --sbom=false \
       --build-arg "NODE_BASE_IMAGE=${FRONTEND_NODE_BASE_IMAGE}" \
       --build-arg "NGINX_BASE_IMAGE=${NGINX_BASE_IMAGE}" \
-      --build-arg "VOS_APP_VERSION=${VOS_APP_VERSION}" \
       -t "v-chatcut-frontend:${tag}" \
       -t "$image" \
       -f vos_docker/Dockerfile.frontend \
@@ -188,7 +180,7 @@ fi
 if contains backend "${COMPONENTS[@]}"; then
   for sheet in "${TARGET_SHEETS[@]}"; do
     IFS='|' read -r profile tag_prefix dockerfile _ <<< "$(sheet_spec "$sheet")"
-    tag="${tag_prefix}_${DATE}_v${VOS_APP_VERSION}"
+    tag="${tag_prefix}_${DATE}"
     image="${BACKEND_REPOSITORY}:${tag}"
     log "Build ${profile} backend: ${image}"
     docker buildx build \
@@ -198,7 +190,6 @@ if contains backend "${COMPONENTS[@]}"; then
       --provenance=false \
       --sbom=false \
       --build-arg "NODE_BASE_IMAGE=${NODE_BASE_IMAGE}" \
-      --build-arg "VOS_APP_VERSION=${VOS_APP_VERSION}" \
       -t "v-chatcut-backend:${tag}" \
       -t "$image" \
       -f "$dockerfile" \

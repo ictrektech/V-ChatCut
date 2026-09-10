@@ -1,4 +1,4 @@
-"""Exercise version arguments without Docker, network, or Feishu writes."""
+"""Verify platform-and-date image tags without Docker, network, or Feishu writes."""
 import os
 from pathlib import Path
 import subprocess
@@ -17,12 +17,11 @@ with tempfile.TemporaryDirectory() as directory:
         tool.write_text('#!/bin/sh\n' + body + '\n')
         tool.chmod(0o755)
     env = dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}', BUILD_VERSION_TEST_LOG=str(log))
-    for arguments in [[], ['--app-version', 'invalid']]:
-        result = subprocess.run(['bash', str(script), '--sheet', 'AMD_with_cuda', *arguments], env=env, capture_output=True)
-        assert result.returncode != 0
-        assert not log.exists(), 'invalid version must fail before any build or push'
-    subprocess.run(['bash', str(script), '--app-version', '0.0.15', '--sheet', 'AMD_with_cuda'], env=env, check=True, capture_output=True)
+    subprocess.run(['bash', str(script), '--sheet', 'AMD_with_cuda'], env=env, check=True, capture_output=True)
     builds = [line for line in log.read_text().splitlines() if line.startswith('buildx build ')]
     assert len(builds) == 2
-    assert all('--build-arg VOS_APP_VERSION=0.0.15' in line and '_v0.0.15' in line for line in builds)
-print('Target version reaches both builds and image tags; missing/invalid version rejected')
+    assert all('_v0.0.' not in line for line in builds)
+    assert all('VOS_APP_VERSION' not in line for line in builds)
+    assert any('v-chatcut-frontend:amd_' in line for line in builds)
+    assert any('v-chatcut-backend:amd_cu128_' in line for line in builds)
+print('Image tags contain platform and date only')
