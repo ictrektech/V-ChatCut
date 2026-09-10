@@ -83,6 +83,9 @@ export const KEY_NAMES = [
   "LLM_OPENROUTER_API_KEY",
   "LLM_OPENROUTER_BASE_URL",
   "LLM_OPENROUTER_MODEL",
+  "LLM_ORCAROUTER_API_KEY",
+  "LLM_ORCAROUTER_BASE_URL",
+  "LLM_ORCAROUTER_MODEL",
   "LLM_OLLAMA_API_KEY",
   "LLM_OLLAMA_BASE_URL",
   "LLM_OLLAMA_MODEL",
@@ -151,6 +154,8 @@ export const KEY_NAMES = [
   "LLM_MODEL",
   "CODEX_MODEL",
   "CODEX_REASONING_EFFORT",
+  "COPILOT_MODEL",
+  "COPILOT_REASONING_EFFORT",
   MODEL_CAPABILITY_OVERRIDES_KEY,
   "GEMINI_IMAGE_MODEL",
   "MINIMAX_IMAGE_MODEL",
@@ -191,6 +196,8 @@ export const KEY_NAMES = [
   "TRANSCRIPTION_DIARIZATION",
   "AUTO_TRANSCRIBE_INGEST",
   "UI_SCALE",
+  "UI_SCALE_BASE",
+  "UI_LOCALE",
   "OPENCHATCUT_SKILLS_DIR",
 ] as const;
 export type KeyName = (typeof KEY_NAMES)[number];
@@ -206,6 +213,8 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "LLM_MODEL",
   "CODEX_MODEL",
   "CODEX_REASONING_EFFORT",
+  "COPILOT_MODEL",
+  "COPILOT_REASONING_EFFORT",
   "LLM_OPENAI_API_MODE",
   MODEL_CAPABILITY_OVERRIDES_KEY,
   "GEMINI_IMAGE_MODEL",
@@ -227,6 +236,8 @@ export const NON_SECRET_NAMES: ReadonlySet<string> = new Set([
   "TRANSCRIPTION_DIARIZATION",
   "AUTO_TRANSCRIBE_INGEST",
   "UI_SCALE",
+  "UI_SCALE_BASE",
+  "UI_LOCALE",
   "ELEVENLABS_SOUND_MODEL",
   "DOUBAO_TTS_RESOURCE_ID",
   "SEEDANCE_VIDEO_MODEL",
@@ -300,10 +311,12 @@ function activeState(): KeystoreState {
   return state;
 }
 
-function normalizeStoredValue(name: string, raw: unknown): string {
+function normalizeStoredValue(name: string, raw: unknown, loading = false): string {
   const value = String(raw ?? "").trim();
   return name === MODEL_CAPABILITY_OVERRIDES_KEY && value
-    ? serializeModelCapabilityOverrides(parseModelCapabilityOverrides(decodePersistedEnvValue(value)))
+    ? serializeModelCapabilityOverrides(parseModelCapabilityOverrides(decodePersistedEnvValue(value), {
+      ignoreUnavailableProviders: loading,
+    }))
     : value;
 }
 
@@ -336,7 +349,7 @@ export function seedKeystore(env: Record<string, string>): void {
   for (const name of KEY_NAMES) {
     const raw = env[name] ?? process.env[name] ?? "";
     try {
-      const value = normalizeStoredValue(name, raw);
+      const value = normalizeStoredValue(name, raw, true);
       if (!value) continue;
       store.set(name, value);
       envSeeded.add(name);

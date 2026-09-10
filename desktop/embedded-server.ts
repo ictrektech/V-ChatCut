@@ -17,6 +17,7 @@ import { createMiniConnect, type MiniConnect } from './mini-connect.ts';
 import { listenWithAffinity, type ListenWithAffinityOptions } from './embedded-port.ts';
 import { runtimeProfile } from '../server/runtime-profile.ts';
 import { distStaticMiddleware, uploadsMiddleware } from './static-files.ts';
+import { registerProductAssetRoot } from '../server/product-assets.ts';
 
 export interface EmbeddedServer {
   server: Server;
@@ -74,6 +75,8 @@ export async function startEmbeddedServer(
   distDir: string,
   listenOptions: ListenWithAffinityOptions = {},
 ): Promise<EmbeddedServer> {
+  // Product files (fonts, voice samples, LUTs, …) live in resources/dist when packaged.
+  registerProductAssetRoot(distDir);
   await seedFromEnvLocal();
 
   const app = createMiniConnect((err) => {

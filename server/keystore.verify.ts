@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseDotenv } from 'dotenv';
 import { loadEnv } from 'vite';
-import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, planLegacyLlmMigration, seedKeystore, keyStatus, getKey } from './keystore.ts';
+import { KEY_NAMES, NON_SECRET_NAMES, mergeEnvText, planLegacyLlmMigration, seedKeystore, keyStatus, getKey, setKeys } from './keystore.ts';
 import { LLM_PROVIDER_PRESETS, llmProviderConfigNames } from '../shared/llm-providers.ts';
 import { MODEL_CAPABILITY_OVERRIDES_KEY, parseModelCapabilityOverrides } from '../shared/model-capabilities.ts';
 import { parseEnvText } from '../desktop/env-file.ts';
@@ -115,11 +115,26 @@ seedKeystore({
 } as Record<string, string>);
 assert.equal(keyStatus().models[MODEL_CAPABILITY_OVERRIDES_KEY], '', 'invalid startup override is not exposed');
 
+const supportedOverride = { backend: 'api', provider: 'openai', modelId: 'custom', contextWindowTokens: 128_000 };
+const overridesWithRetiredProvider = JSON.stringify([
+  { ...supportedOverride, provider: 'retired-provider' }, supportedOverride,
+]);
+assert.throws(() => parseModelCapabilityOverrides(overridesWithRetiredProvider), /Invalid model capability provider/,
+  'new configuration still rejects unavailable providers');
+await assert.rejects(setKeys({ [MODEL_CAPABILITY_OVERRIDES_KEY]: overridesWithRetiredProvider }),
+  /Invalid model capability provider/, 'settings writes reject unavailable providers before persistence');
+seedKeystore({ ...isolatedSeed, [MODEL_CAPABILITY_OVERRIDES_KEY]: overridesWithRetiredProvider });
+assert.deepEqual(JSON.parse(getKey(MODEL_CAPABILITY_OVERRIDES_KEY)), [supportedOverride],
+  'loading old settings retains valid overrides when another provider was removed');
+// Restore the empty override state for the independent legacy migration checks below.
+seedKeystore({ ...isolatedSeed, [MODEL_CAPABILITY_OVERRIDES_KEY]: 'invalid' });
+
 // ── non-secret model/routing/toggle channel: explicit routing names + per-vendor
 // Base URL/model name (derived with LLM_PROVIDER_PRESETS), the value is echoed by keyStatus().models —
 // The SECRET value still never appears in any response ──
 const MODEL_ROUTING_NAMES = [
   'LLM_PROVIDER', 'LLM_MODEL', 'CODEX_MODEL', 'CODEX_REASONING_EFFORT', 'LLM_OPENAI_API_MODE',
+  'COPILOT_MODEL', 'COPILOT_REASONING_EFFORT',
   MODEL_CAPABILITY_OVERRIDES_KEY,
   'GEMINI_IMAGE_MODEL', 'IMAGE_BASE_URL', 'GEMINI_BASE_URL',
   'ELEVENLABS_TTS_MODEL', 'ELEVENLABS_SOUND_MODEL',
@@ -133,7 +148,7 @@ const MODEL_ROUTING_NAMES = [
   'XAI_IMAGE_MODEL', 'XAI_VIDEO_MODEL',
   'INWORLD_TTS_MODEL', 'FISHAUDIO_TTS_MODEL', 'SPEECHIFY_TTS_MODEL',
   'PREFERRED_IMAGE_VENDOR', 'PREFERRED_VOICE_VENDOR', 'PREFERRED_VIDEO_VENDOR', 'PREFERRED_MUSIC_VENDOR',
-  'PREFERRED_TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE', 'TRANSCRIPTION_DIARIZATION', 'AUTO_TRANSCRIBE_INGEST', 'UI_SCALE',
+  'PREFERRED_TRANSCRIPTION_PROVIDER', 'TRANSCRIPTION_LANGUAGE', 'TRANSCRIPTION_DIARIZATION', 'AUTO_TRANSCRIBE_INGEST', 'UI_SCALE', 'UI_SCALE_BASE', 'UI_LOCALE',
   'LOCAL_ASR_MODEL', // On-device ASR model tier: '' | tiny | base | small | medium
   'R2_ENABLED', // Cloud synchronization switch (''=enable/'0'=disable)
   'R2_PRESIGN', // Browser pre-signed direct transmission (''=enabled/'0'=server-side write-through only)

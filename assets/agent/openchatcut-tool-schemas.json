@@ -2449,7 +2449,7 @@
     },
     {
       "name": "download_media",
-      "description": "Download a media file from a public URL into the project media pool. Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override. Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset.",
+      "description": "Download a media file from a public URL into the project media pool. Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override. Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset. Serial: each call has a 75s window to start URLs, so pass at most 3 urls per call and call again for the rest. An unreachable host is a failed row, never a remote fallback. Each successful row carries probe (duration, dimensions, fps, audio/video tracks, codecs, qualityRisks) measured by the local ffprobe at import time — do not call probe_media for a file you just downloaded. Bytes that are not readable media fail as not_media and never enter the pool.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -4384,7 +4384,7 @@
     },
     {
       "name": "load_skill",
-      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Use files=[...] for whole omitted files; page one file with file, offset, and limit. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
+      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Exactly one selector per call: either files=[...] to load whole omitted files, or file with offset and limit to page a single file. Never send file and files in the same call. Bundled skills: ai-cinematic-short-film, asset-import, batch-montage-variants, beat-sync-montage, create-motion-graphics, ecommerce-product-montage, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -4394,11 +4394,11 @@
           },
           "file": {
             "type": "string",
-            "description": "One safe relative file path to page; use returned nextOffset for the next call."
+            "description": "One safe relative file path to page; use returned nextOffset for the next call. Omit the key entirely when sending files; never pass an empty string."
           },
           "files": {
             "type": "array",
-            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned.",
+            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned. Omit the key entirely when paging with file; never pass an empty array.",
             "items": {
               "type": "string"
             },
@@ -4515,7 +4515,7 @@
     },
     {
       "name": "probe_media",
-      "description": "Probe a media file with ffprobe in an isolated sandbox. Returns measured duration, dimensions, average fps, stream presence/codecs, plus explicit qualityRisks (low resolution, mono, very short, variable/low frame rate). Accepts a media-pool assetId/prefix, local /media/… path, or public https URL. Use before finalize_uploaded_asset to pass hasAudioTrack and measured fps/duration. The call can fail when the source is unreachable or the e2b sandbox is unavailable; finalize may proceed without it, using ingest defaults.",
+      "description": "Probe a media file with the ffprobe bundled in the app (no sandbox or API key needed). Returns measured duration, dimensions, average fps, stream presence/codecs, plus explicit qualityRisks (low resolution, mono, very short, variable/low frame rate). Accepts a media-pool assetId/prefix, local /media/… path, or public https URL. Use before finalize_uploaded_asset to pass hasAudioTrack and measured fps/duration. download_media/push_asset results already include the same measurements as `probe`, so do not re-probe a file you just imported. It fails only when the source cannot be read; finalize may then proceed with ingest defaults.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5194,8 +5194,73 @@
       }
     },
     {
+      "name": "browse_local_media",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute directory path; omitted means the user home directory."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Case-insensitive substring of the relative file or directory path."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "video",
+              "audio",
+              "image",
+              "gif",
+              "svg"
+            ]
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Search subdirectories, up to 12 levels and 10000 entries. Default false."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Page size; default 100."
+          }
+        }
+      }
+    },
+    {
+      "name": "import_assets",
+      "description": "Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Absolute paths of selected media files."
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      }
+    },
+    {
       "name": "import_asset",
-      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; the path must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5211,7 +5276,7 @@
     },
     {
       "name": "import_folder",
-      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; the directory must be inside an allowed AGENT_IMPORT_ROOTS directory. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5813,7 +5878,7 @@
     },
     {
       "name": "load_skill",
-      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Use files=[...] for whole omitted files; page one file with file, offset, and limit. Bundled skills: ai-cinematic-short-film, asset-import, create-motion-graphics, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
+      "description": "Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Exactly one selector per call: either files=[...] to load whole omitted files, or file with offset and limit to page a single file. Never send file and files in the same call. Bundled skills: ai-cinematic-short-film, asset-import, batch-montage-variants, beat-sync-montage, create-motion-graphics, ecommerce-product-montage, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5823,11 +5888,11 @@
           },
           "file": {
             "type": "string",
-            "description": "One safe relative file path to page; use returned nextOffset for the next call."
+            "description": "One safe relative file path to page; use returned nextOffset for the next call. Omit the key entirely when sending files; never pass an empty string."
           },
           "files": {
             "type": "array",
-            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned.",
+            "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned. Omit the key entirely when paging with file; never pass an empty array.",
             "items": {
               "type": "string"
             },
@@ -6015,6 +6080,49 @@
           "timing",
           "density"
         ]
+      }
+    },
+    {
+      "name": "browse_local_media",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute directory path; omitted means the user home directory."
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Case-insensitive substring of the relative file or directory path."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "video",
+              "audio",
+              "image",
+              "gif",
+              "svg"
+            ]
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Search subdirectories, up to 12 levels and 10000 entries. Default false."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Page size; default 100."
+          }
+        }
       }
     },
     {

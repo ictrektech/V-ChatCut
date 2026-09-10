@@ -1,4 +1,5 @@
-import { useState, type RefObject } from 'react';
+import { useMemo, useState, type RefObject } from 'react';
+import type { SequenceLibraryOption } from './sequenceOptions';
 import type { PlayerRef } from '@remotion/player';
 import { theme } from '../theme';
 import { useT } from '../i18n/locale';
@@ -47,13 +48,6 @@ const AUDIO_TRANSITION_ITEMS: ResourceItem[] = AUDIO_TRANSITION_ORDER.map((t) =>
 }));
 const FX_ITEMS: ResourceItem[] = FX_IDS.map((id) => ({ id, name: FX_EFFECTS[id].name }));
 const ZOOM_ITEMS: ResourceItem[] = ZOOM_SHAPE_ORDER.map((s) => ({ id: s, name: ZOOM_SHAPE_LABELS[s] }));
-export interface SequenceLibraryOption {
-  id: string;
-  name: string;
-  durationInFrames: number;
-  disabledReason?: string;
-}
-
 interface LibraryPanelProps {
   semanticScopeId: string;
   templates: Tpl[];
@@ -62,7 +56,7 @@ interface LibraryPanelProps {
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
   items: TimelineItem[];
-  sequenceOptions: SequenceLibraryOption[];
+  getSequenceOptions: () => SequenceLibraryOption[];
   onAddSequence: (timelineId: string) => void;
   /** A1/V1 aliases + names for script track picker */
   trackOptions: TranscriptTrackOption[];
@@ -108,7 +102,6 @@ interface LibraryPanelProps {
   onRemoveMediaAsset: (id: string) => void;
   onRemoveMediaAssets: (ids: string[]) => void;
   onPasteMediaAssets: (assets: MediaAsset[], folderId?: string) => void;
-  onOpenSettings?: () => void;
   onRelinkMediaAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Creative-mode skill selection (Skill tab): mirrors the chat composer state. */
   creativeMode: string | null;
@@ -131,7 +124,7 @@ function localizeDefaultSequenceName(name: string, t: ReturnType<typeof useT>): 
   const match = /^序列 (\d+)$/.exec(name);
   return match ? t('序列 {n}', { n: match[1]! }) : name;
 }
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onIngestDirectoryAsset, onTranscribeAsset, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onOpenSettings, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, getSequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onIngestDirectoryAsset, onTranscribeAsset, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onOpenSettings, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
@@ -169,6 +162,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
   const isCaptions = mainTab === '字幕';
   const isMyAssets = mainTab === '我的素材';
   const isSequences = mainTab === '序列';
+  const sequenceOptions = useMemo(() => isSequences ? getSequenceOptions() : [], [isSequences, getSequenceOptions]);
   const isSkills = mainTab === '技能';
   const openCaptionStyles = (sourceItemIds: string[]) => {
     const target = captionTracks[0];
@@ -234,7 +228,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={onAssetLoadError} onImport={onImportMedia} onImportMobile={onImportMobileMedia} directoryImport={directoryImport} directoryImportError={directoryImportError} onAddAsset={onAddMediaItem} onAddAssetsToTimeline={onAddMediaAssetsToTimeline} onAddAssetsToChat={onUseMediaAI}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onTranscribe={onTranscribeAsset} onRenameAssets={onRenameMediaAssets} onSetFavorite={onSetMediaAssetFavorite} onSetAssetsFavorite={onSetMediaAssetsFavorite} onRemoveAsset={onRemoveMediaAsset} onRemoveAssets={onRemoveMediaAssets} onPasteAssets={onPasteMediaAssets}
-            onOpenSettings={onOpenSettings} onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
+            onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
         </div>
       ) : isSkills ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>

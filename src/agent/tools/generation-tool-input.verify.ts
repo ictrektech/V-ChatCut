@@ -99,6 +99,15 @@ assert.equal(byteplusVideo.refImages, undefined, 'blank reference defaults are r
 assert.equal(byteplusVideo.promptOptimizer, undefined, 'BytePlus must not receive MiniMax controls');
 assert.equal(byteplusVideo.mode, undefined, 'BytePlus must not receive Kling mode');
 
+assert.equal(buildSubmitVideoArgs({ prompt: 'legacy default' }).model, 'seedance2');
+for (const model of ['retired-provider', '', null, 42, '__proto__', 'toString']) {
+  assert.throws(() => buildSubmitVideoArgs({ model, prompt: 'saved job', durationSeconds: 5 }),
+    /Unsupported video model/, 'an explicit unsupported model must never select another paid provider');
+}
+for (const model of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video']) {
+  assert.equal(buildSubmitVideoArgs({ model }).model, model, 'supported video routing is unchanged');
+}
+
 const minimaxMusic = buildSubmitMusicArgs({
   provider: 'minimax', mode: 't2m', prompt: 'ambient', isInstrumental: true,
   count: 2, stream: false, styles: ['ambient'], referenceAssetId: '', coverFeatureId: '',

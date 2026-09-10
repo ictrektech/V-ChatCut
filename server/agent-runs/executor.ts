@@ -12,7 +12,9 @@ import {
 import {
   MODEL_CAPABILITY_OVERRIDES_KEY,
   parseModelCapabilityOverrides,
+  resolveCopilotModelCapabilities,
   resolveModelCapabilities,
+  type ModelBackend,
   type ModelCapabilities,
 } from '../../shared/model-capabilities';
 import { getKey } from '../keystore';
@@ -22,6 +24,7 @@ import {
 } from './tool-policy';
 import { createServerLanguageModel, serverProviderOptions } from './model';
 import {
+  estimateContextTokens,
   estimateTextTokens,
   type AgentContextUsage,
   type ContextPreparation,
@@ -74,6 +77,7 @@ export interface ServerRunInput {
   readonly backend?: string;
   readonly provider: string;
   readonly model: string;
+  readonly reasoningEffort?: string | null;
   readonly openAiApiMode: OpenAiApiMode;
   readonly cacheMode: 'short' | 'long';
   readonly maxOutputTokens: number;
@@ -84,9 +88,16 @@ export interface ServerRunInput {
   readonly instructions?: string;
 }
 
+/** Narrow a persisted or request-supplied backend string to the known set. */
+export function serverRunBackend(value: unknown): ModelBackend {
+  return value === 'codex' || value === 'copilot' ? value : 'api';
+}
+
 type ServerTurnInput = Omit<ServerContextInput, 'schemas'> & {
   readonly activation: ActivationState;
   readonly requestIndex: number;
+  /** Silent overflow-recovery stage: shrinks the request after a provider rejection. */
+  readonly overflowStage?: 'reduced-output';
 };
 
 function measuredContextUsage(
@@ -121,16 +132,26 @@ async function executeServerTurn(
     return await runServerTurnOnce(input);
   } catch (error) {
     // A context overflow means the estimate undershot the real tokenizer.
-    // Compress once, regardless of the estimated pressure, then retry the
-    // exact same turn. Deterministic retries for other failures live in
-    // llm-retry.ts; this one must change the request before it can succeed.
+    // Recover silently in escalating stages before surfacing anything:
+    // 1) compress history (forceCompact), 2) shrink the output reservation,
+    // 3) shrink both output and the active tool surface. Each stage only
+    // changes the request; the user never sees an intermediate failure.
+    // Deterministic retries for other failures live in llm-retry.ts.
     if (input.signal.aborted
       || input.forceCompact
       || classifyLlmFailure(error).code !== 'CONTEXT_WINDOW_EXCEEDED') {
       throw error;
     }
     pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex });
-    return runServerTurnOnce({ ...input, forceCompact: true });
+    try {
+      return await runServerTurnOnce({ ...input, forceCompact: true });
+    } catch (retryError) {
+      if (input.signal.aborted || classifyLlmFailure(retryError).code !== 'CONTEXT_WINDOW_EXCEEDED') {
+        throw retryError;
+      }
+      pushRunEvent(input.run, 'context-overflow-retry', { requestIndex: input.requestIndex, stage: 'reduced-output' });
+      return runServerTurnOnce({ ...input, forceCompact: true, overflowStage: 'reduced-output' });
+    }
   }
 }
 
@@ -152,13 +173,16 @@ async function runServerTurnOnce(
   );
   pushRunEvent(input.run, 'text-start', {});
   const options = serverProviderOptions(input.provider, input.apiMode, input.cacheMode);
+  const maxOutputTokens = input.overflowStage === 'reduced-output'
+    ? Math.max(4_096, Math.floor(input.maxOutputTokens / 4))
+    : input.maxOutputTokens;
   const result = streamText({
     model: input.model,
     instructions: input.instructions,
     messages: prepared.messages,
     tools,
     ...(options ? { providerOptions: options } : {}),
-    maxOutputTokens: input.maxOutputTokens,
+    maxOutputTokens,
     maxRetries: 0,
     abortSignal: input.signal,
     timeout: SERVER_RUN_AI_TIMEOUT,
@@ -198,7 +222,7 @@ async function runServerTurnOnce(
  */
 export function resolveServerRunCapabilities(
   provider: LlmProvider,
-  backend: 'codex' | 'api',
+  backend: ModelBackend,
   modelId: string,
 ): ModelCapabilities {
   return resolveModelCapabilities(
@@ -207,16 +231,56 @@ export function resolveServerRunCapabilities(
   );
 }
 
-function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
+/**
+ * Copilot publishes exact per-model limits, so prefer them over the bundled
+ * catalog; fall back to the catalog path when the runtime is unreachable.
+ */
+async function resolveCopilotRunCapabilities(
+  provider: LlmProvider,
+  modelId: string,
+): Promise<ModelCapabilities> {
+  const overrides = parseModelCapabilityOverrides(getKey(MODEL_CAPABILITY_OVERRIDES_KEY));
+  const facts = await (await import('../copilot/client')).copilotModelFacts(modelId)
+    .catch(() => null);
+  if (!facts) return resolveServerRunCapabilities(provider, 'copilot', modelId);
+  return resolveCopilotModelCapabilities(
+    { backend: 'copilot', provider, modelId },
+    {
+      contextWindowTokens: facts.contextWindowTokens,
+      maxInputTokens: facts.maxInputTokens,
+      maxOutputTokens: facts.maxOutputTokens,
+      supportsTools: facts.supportsTools,
+      supportsVision: facts.supportsVision,
+      reasoningEfforts: facts.supportedReasoningEfforts,
+    },
+    overrides,
+  );
+}
+
+async function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
   const provider = normalizeLlmProvider(input.provider);
   const apiMode = normalizeOpenAiApiMode(input.openAiApiMode);
-  const backend = input.backend === 'codex' ? 'codex' : 'api';
+  const backend = serverRunBackend(input.backend);
   const requested = resolveServerRunToolCatalog(input.tools, run.askOnly);
-  const capabilities = resolveServerRunCapabilities(provider, backend, input.model);
+  const capabilities = backend === 'copilot'
+    ? await resolveCopilotRunCapabilities(provider, input.model)
+    : resolveServerRunCapabilities(provider, backend, input.model);
+  const basePrompt = buildServerRunPrompt({
+    ...input,
+    projectId: run.projectId,
+    askOnly: run.askOnly,
+    references: run.references,
+  });
+  const estimatedInputTokens = estimateContextTokens(
+    basePrompt.messages,
+    basePrompt.instructions,
+    estimateTextTokens(JSON.stringify(requested)),
+  );
   const maxOutputTokens = resolveServerRunMaxOutputTokens(
     input.maxOutputTokens,
     capabilities.maxOutputTokens.value,
     capabilities.contextWindowTokens.value,
+    estimatedInputTokens,
   );
   const maxInputTokens = capabilities.maxInputTokens.estimated
     ? Math.max(1, capabilities.contextWindowTokens.value - maxOutputTokens)
@@ -235,12 +299,6 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
       input.maxAcceptanceIterations,
     ),
   };
-  const basePrompt = buildServerRunPrompt({
-    ...input,
-    projectId: run.projectId,
-    askOnly: run.askOnly,
-    references: run.references,
-  });
   const prompt = {
     ...basePrompt,
     instructions: basePrompt.instructions + acceptanceInstructions(activation.acceptance.enabled),
@@ -254,7 +312,7 @@ function createExecutionPlan(run: ServerRun, input: ServerRunInput) {
     maxInputTokens,
     activation,
     prompt,
-    model: backend === 'codex'
+    model: backend === 'codex' || backend === 'copilot'
       ? undefined
       : createServerLanguageModel(
           provider,
@@ -270,46 +328,53 @@ async function executeRunTurns(
   input: ServerRunInput,
   signal: AbortSignal,
 ): Promise<void> {
-  const plan = createExecutionPlan(run, input);
+  const plan = await createExecutionPlan(run, input);
   let messages = plan.prompt.messages;
   // No turn cap: the model decides when the task is done. The only automatic
   // stop beside "no more tool calls" is an output-token cutoff, which would
   // otherwise feed truncated text back into the loop.
   for (let turn = 0; ; turn += 1) {
+    const subprocessTurnInput = {
+      run,
+      messages,
+      instructions: plan.prompt.instructions,
+      schemas: plan.activation.current.schemas(),
+      model: input.model,
+      askOnly: run.askOnly,
+      projectId: run.projectId,
+      maxInputTokens: plan.maxInputTokens,
+      maxOutputTokens: plan.maxOutputTokens,
+      contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+      contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+      signal,
+      activation: plan.activation,
+      requestIndex: turn + 1,
+    };
     const outcome = await runServerTurnWithRetry(run, turn + 1, signal, () =>
       plan.backend === 'codex'
-        ? (async () => (await import('./codex-turn')).executeServerCodexTurn({
-          run,
-          messages,
-          instructions: plan.prompt.instructions,
-          schemas: plan.activation.current.schemas(),
-          model: input.model,
-          askOnly: run.askOnly,
-          projectId: run.projectId,
-          maxInputTokens: plan.maxInputTokens,
-          maxOutputTokens: plan.maxOutputTokens,
-          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-          signal,
-          activation: plan.activation,
-          requestIndex: turn + 1,
-        }))()
-        : executeServerTurn({
-          run,
-          messages,
-          instructions: plan.prompt.instructions,
-          model: plan.model!,
-          provider: plan.provider,
-          apiMode: plan.apiMode,
-          cacheMode: input.cacheMode,
-          contextWindowTokens: plan.capabilities.contextWindowTokens.value,
-          contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
-          maxInputTokens: plan.maxInputTokens,
-          maxOutputTokens: plan.maxOutputTokens,
-          signal,
-          activation: plan.activation,
-          requestIndex: turn + 1,
-        }),
+        ? (async () => (await import('./codex-turn'))
+          .executeServerCodexTurn(subprocessTurnInput))()
+        : plan.backend === 'copilot'
+          ? (async () => (await import('./copilot-turn')).executeServerCopilotTurn({
+            ...subprocessTurnInput,
+            reasoningEffort: input.reasoningEffort ?? null,
+          }))()
+          : executeServerTurn({
+            run,
+            messages,
+            instructions: plan.prompt.instructions,
+            model: plan.model!,
+            provider: plan.provider,
+            apiMode: plan.apiMode,
+            cacheMode: input.cacheMode,
+            contextWindowTokens: plan.capabilities.contextWindowTokens.value,
+            contextWindowEstimated: plan.capabilities.contextWindowTokens.estimated,
+            maxInputTokens: plan.maxInputTokens,
+            maxOutputTokens: plan.maxOutputTokens,
+            signal,
+            activation: plan.activation,
+            requestIndex: turn + 1,
+          }),
     );
     if (outcome.followupText) {
       if (plan.activation.acceptance.phase === 'checking') {
@@ -326,17 +391,10 @@ async function executeRunTurns(
       return;
     }
     messages = outcome.messages;
-    const disposition = turnDisposition(
-      outcome.hitMaxTokens,
-      outcome.continued,
-      plan.activation.toolFailures.hasUnresolved,
-    );
+    const disposition = turnDisposition(outcome.hitMaxTokens, outcome.continued);
     if (disposition === 'continue') continue;
     if (disposition === 'max-tokens') {
       pushRunEvent(run, 'max-tokens', { turn: turn + 1 });
-    }
-    if (disposition === 'failed') {
-      throw new Error(plan.activation.toolFailures.report());
     }
     if (disposition === 'completed') {
       const acceptance = decideAcceptanceAfterTurn(plan.activation.acceptance);
@@ -366,6 +424,11 @@ async function executeRunTurns(
           maxIterations: acceptance.state.maxIterations,
         });
       }
+    }
+    if (plan.activation.toolFailures.hasUnresolved) {
+      // The model answered with the failed result in its context, so the run completes;
+      // this tells the user and the inspector which calls failed, without a failure banner.
+      pushRunEvent(run, 'tool-failures', { failures: plan.activation.toolFailures.snapshot() });
     }
     pushRunEvent(run, 'finish', {
       ...serverRunTextMetadata(outcome.text),

@@ -15,6 +15,8 @@ import { setAutoTranscribeIngest } from '../../transcript/provider';
 import { FieldRow, ON, VendorPane, WARN, type FieldCtx } from './settingsVendorPane';
 import { useCodexSettings } from './useCodexSettings';
 import type { CodexAgentStatus } from '../../../shared/codex-agent';
+import type { CopilotAgentStatus } from '../../../shared/copilot-agent';
+import { useCopilotSettings } from './useCopilotSettings';
 import { stageFieldValue } from './codexReasoning';
 import {
   buildPatch, categoryGroupStats, groupConfigured, settingsCategoriesForStatus,
@@ -155,13 +157,13 @@ function findGroupIn(categories: readonly SettingsCategory[], key: string): Sett
     ?? categories[0].groups[0];
 }
 
-function useTreeSelection(categories: readonly SettingsCategory[]): {
+function useTreeSelection(categories: readonly SettingsCategory[], initialVendor?: string): {
   group: SettingsGroup; page: SettingsVendorPage;
   selectGroup: (key: string) => void; selectVendor: (key: string) => void;
 } {
-  const first = categories[0].groups[0];
-  const [groupKey, setGroupKey] = useState<string>(first.key);
-  const [vendorKey, setVendorKey] = useState<string>(first.vendors[0].key);
+  const seeded = seedSelection(categories, initialVendor);
+  const [groupKey, setGroupKey] = useState<string>(seeded.group.key);
+  const [vendorKey, setVendorKey] = useState<string>(seeded.vendor.key);
   const group = findGroupIn(categories, groupKey);
   const page = group.vendors.find((v) => v.key === vendorKey) ?? group.vendors[0];
   useEffect(() => {
@@ -178,6 +180,18 @@ function useTreeSelection(categories: readonly SettingsCategory[]): {
     setVendorKey(nextGroup.vendors[0].key);
   };
   return { group, page, selectGroup, selectVendor: setVendorKey };
+}
+
+/** Open on a specific vendor page when the caller routed here (e.g. the chat's missing-model-pack button). */
+function seedSelection(categories: readonly SettingsCategory[], initialVendor?: string): { group: SettingsGroup; vendor: SettingsVendorPage } {
+  for (const category of categories) {
+    for (const group of category.groups) {
+      const vendor = group.vendors.find((v) => v.key === initialVendor);
+      if (vendor) return { group, vendor };
+    }
+  }
+  const first = categories[0].groups[0];
+  return { group: first, vendor: first.vendors[0] };
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -197,6 +211,7 @@ function useFieldContext(
   setValues: React.Dispatch<React.SetStateAction<Values>>,
   reveal: boolean,
   refreshStatus: () => Promise<void>,
+  copilotEnabled: boolean,
 ): FieldCtx {
   const [modelOptions, setModelOptions] = useState<Record<string, readonly string[]>>({});
   const [autoClearedEffort, setAutoClearedEffort] = useState<string | null>(null);
@@ -204,6 +219,7 @@ function useFieldContext(
     modelValue(status, 'CODEX_MODEL'),
     modelValue(status, 'CODEX_REASONING_EFFORT'),
   );
+  const copilot = useCopilotSettings(copilotEnabled);
   const onStage = (field: SettingsField, raw: string): void => {
     const staged = stageFieldValue(values, field, raw, status, codex.models, autoClearedEffort);
     setValues(staged.values);
@@ -224,19 +240,19 @@ function useFieldContext(
       : { ...previous, [field.name]: '' });
   };
   return {
-    status, values, reveal, onStage, onToggleClear, modelOptions, codex, refreshStatus,
+    status, values, reveal, onStage, onToggleClear, modelOptions, codex, copilot, refreshStatus,
     onModelsDiscovered: (name, models) => {
       setModelOptions((previous) => ({ ...previous, [name]: [...new Set(models)] }));
     },
   };
 }
 
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose, initialVendor }: { onClose: () => void; initialVendor?: string }) {
   const t = useT();
   const { status, setStatus, loadError } = useKeyStatus();
   const [values, setValues] = useState<Values>({});
   const settingsCategories = useMemo(() => settingsCategoriesForStatus(status), [status]);
-  const { group, page, selectGroup, selectVendor } = useTreeSelection(settingsCategories);
+  const { group, page, selectGroup, selectVendor } = useTreeSelection(settingsCategories, initialVendor);
   const [reveal, setReveal] = useState(false);
   const refreshStatus = async (): Promise<void> => {
     try {
@@ -248,7 +264,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       // Keep the stale snapshot; the next save or dialog open refreshes it.
     }
   };
-  const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus);
+  const ctx = useFieldContext(status, values, setValues, reveal, refreshStatus,
+    page.connection === 'copilot');
   useEffect(() => {
     if (!status?.models) return;
     syncTranscriptionPreferences(status.models);
@@ -268,6 +285,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   useEscape(requestClose);
 
   const codexStatus = ctx.codex.status;
+  const copilotStatus = ctx.copilot.status;
 
   const shownError = error ?? loadError;
   const message = shownError ? { text: shownError, color: WARN }
@@ -287,7 +305,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </div>
         </header>
         <div style={bodyRow}>
-          <CapabilityTree categories={settingsCategories} status={status} codexStatus={codexStatus}
+          <CapabilityTree categories={settingsCategories} status={status} codexStatus={codexStatus} copilotStatus={copilotStatus}
             activeGroup={group.key} onSelect={selectGroup} />
           <VendorList group={group} activeVendor={page.key} onSelectVendor={selectVendor} ctx={ctx} />
           <VendorPane page={page} hint={group.hint} ctx={ctx} />
@@ -301,9 +319,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
 // ── Left column (categories can be folded → capabilities can be selected) ──────────────────────────────────────
 
-function CapabilityTree({ categories, status, codexStatus, activeGroup, onSelect }: {
+function CapabilityTree({ categories, status, codexStatus, copilotStatus, activeGroup, onSelect }: {
   categories: readonly SettingsCategory[];
   status: KeyStatusResponse | null; codexStatus: CodexAgentStatus | null;
+  copilotStatus: CopilotAgentStatus | null;
   activeGroup: string; onSelect: (key: string) => void;
 }) {
   const t = useT();
@@ -319,6 +338,7 @@ function CapabilityTree({ categories, status, codexStatus, activeGroup, onSelect
       <div style={treeScroll}>
         {categories.map((cat) => (
           <TreeCategory key={cat.key} category={cat} status={status} codexStatus={codexStatus}
+            copilotStatus={copilotStatus}
             open={!collapsed.has(cat.key)} activeGroup={activeGroup}
             onToggle={() => toggle(cat.key)} onSelect={onSelect} />
         ))}
@@ -332,12 +352,13 @@ function CapabilityTree({ categories, status, codexStatus, activeGroup, onSelect
 
 interface TreeCategoryProps {
   category: SettingsCategory; status: KeyStatusResponse | null; codexStatus: CodexAgentStatus | null;
+  copilotStatus: CopilotAgentStatus | null;
   open: boolean; activeGroup: string; onToggle: () => void; onSelect: (key: string) => void;
 }
 
-function TreeCategory({ category, status, codexStatus, open, activeGroup, onToggle, onSelect }: TreeCategoryProps) {
+function TreeCategory({ category, status, codexStatus, copilotStatus, open, activeGroup, onToggle, onSelect }: TreeCategoryProps) {
   const t = useT();
-  const { done, total } = categoryGroupStats(status, category, codexStatus);
+  const { done, total } = categoryGroupStats(status, category, codexStatus, copilotStatus);
   return (
     <div>
       <button type="button" onClick={onToggle} title={open ? t('收起') : t('展开')} style={catRow}>
@@ -351,7 +372,7 @@ function TreeCategory({ category, status, codexStatus, open, activeGroup, onTogg
         </span>
       </button>
       {open && category.groups.map((g) => (
-        <GroupRow key={g.key} title={g.title} on={groupConfigured(status, g, codexStatus)}
+        <GroupRow key={g.key} title={g.title} on={groupConfigured(status, g, codexStatus, copilotStatus)}
           active={g.key === activeGroup} onSelect={() => onSelect(g.key)} />
       ))}
     </div>
@@ -381,7 +402,7 @@ function VendorList({ group, activeVendor, onSelectVendor, ctx }: {
     <div style={vendorCol}>
       {group.route && <div style={routeBox}><FieldRow field={group.route} ctx={ctx} /></div>}
       {group.vendors.map((p) => (
-        <VendorRow key={p.key} page={p} on={vendorConfigured(ctx.status, p, ctx.codex.status)}
+        <VendorRow key={p.key} page={p} on={vendorConfigured(ctx.status, p, ctx.codex.status, ctx.copilot.status)}
           active={p.key === activeVendor} onSelect={() => onSelectVendor(p.key)} />
       ))}
     </div>

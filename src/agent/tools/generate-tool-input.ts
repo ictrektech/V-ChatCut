@@ -220,7 +220,10 @@ const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok
 
 const VIDEO_STRATEGIES = { seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo } as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
-  const model = args.model === 'kling' || args.model === 'hailuo' || args.model === 'byteplus' || args.model === 'grok-imagine-video' ? args.model : 'seedance2';
+  const model = args.model === undefined ? 'seedance2' : args.model;
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video') {
+    throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
+  }
   return VIDEO_STRATEGIES[model](args);
 }
 

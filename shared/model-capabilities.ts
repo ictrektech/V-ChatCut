@@ -2,7 +2,7 @@ import modelsDevCatalog from '../assets/model-capabilities/models-dev.json' with
 import { LLM_PROVIDER_PRESETS, type LlmProvider } from './llm-providers.js';
 
 export const MODEL_CAPABILITY_OVERRIDES_KEY = 'AGENT_MODEL_CAPABILITY_OVERRIDES';
-export type ModelBackend = 'api' | 'codex';
+export type ModelBackend = 'api' | 'codex' | 'copilot';
 export type ModelCapabilitySource = 'catalog' | 'provider-fallback' | 'settings-override';
 
 export interface ModelIdentity {
@@ -97,7 +97,9 @@ function parseIdentity(value: Record<string, unknown>): ModelIdentity {
   const backend = value.backend;
   const provider = value.provider;
   const modelId = typeof value.modelId === 'string' ? value.modelId.trim() : '';
-  if (backend !== 'api' && backend !== 'codex') throw new Error('Invalid model capability backend.');
+  if (backend !== 'api' && backend !== 'codex' && backend !== 'copilot') {
+    throw new Error('Invalid model capability backend.');
+  }
   if (typeof provider !== 'string' || !PROVIDERS.has(provider)) throw new Error('Invalid model capability provider.');
   if (backend === 'codex' && provider !== 'openai') throw new Error('Codex capabilities require the OpenAI provider.');
   if (!modelId || modelId.length > 256 || [...modelId].some((ch) => {
@@ -168,13 +170,17 @@ function identityKey(identity: ModelIdentity): string {
   return JSON.stringify([identity.backend, identity.provider, identity.modelId]);
 }
 
-export function parseModelCapabilityOverrides(raw: unknown): readonly ModelCapabilityOverride[] {
+export function parseModelCapabilityOverrides(
+  raw: unknown,
+  { ignoreUnavailableProviders = false }: { ignoreUnavailableProviders?: boolean } = {},
+): readonly ModelCapabilityOverride[] {
   if (raw === undefined || raw === null || raw === '') return [];
   if (typeof raw !== 'string' || new TextEncoder().encode(raw).byteLength > MAX_OVERRIDE_BYTES) throw new Error('Model capability overrides are too large.');
   let decoded: unknown;
   try { decoded = JSON.parse(raw); } catch { throw new Error('Model capability overrides must be valid JSON.'); }
   if (!Array.isArray(decoded) || decoded.length > MAX_OVERRIDE_RECORDS) throw new Error('Invalid model capability override list.');
-  const records = decoded.map(parseOverride);
+  const records = decoded.filter((record) => !ignoreUnavailableProviders
+    || typeof record?.provider !== 'string' || PROVIDERS.has(record.provider)).map(parseOverride);
   const keys = records.map(identityKey);
   if (new Set(keys).size !== keys.length) throw new Error('Duplicate model capability override.');
   return records.sort((a, b) => identityKey(a).localeCompare(identityKey(b)));
@@ -276,4 +282,91 @@ export function resolveModelCapabilities(
     supportsTools: tools, supportsImages: images, supportsReasoning: reasoning,
     reasoningEfforts: efforts,
     ...(defaultEffort ? { defaultReasoningEffort: defaultEffort } : {}) };
+}
+
+/**
+ * Facts the Copilot runtime reports for one model via `client.listModels()`.
+ * These come from the Copilot service itself, so they outrank the bundled
+ * models.dev catalog and are recorded as exact rather than estimated.
+ */
+export interface CopilotModelFacts {
+  readonly contextWindowTokens: number | null;
+  readonly maxInputTokens: number | null;
+  readonly maxOutputTokens: number | null;
+  readonly supportsTools: boolean;
+  readonly supportsVision: boolean;
+  readonly reasoningEfforts: readonly string[];
+}
+
+/**
+ * Copilot serves models from several vendors behind one endpoint. Attributing
+ * each model id to its upstream provider keeps capability overrides and the
+ * vision-model picker working the same way they do for the `api` backend.
+ */
+export function copilotProviderForModel(modelId: string): LlmProvider {
+  const id = modelId.toLowerCase();
+  if (id.startsWith('claude')) return 'anthropic';
+  if (id.startsWith('gemini')) return 'gemini';
+  if (id.startsWith('grok')) return 'xai';
+  return 'openai';
+}
+
+export function resolveCopilotModelCapabilities(
+  identity: ModelIdentity,
+  facts: CopilotModelFacts,
+  records: readonly ModelCapabilityOverride[] = [],
+): ModelCapabilities {
+  const override = findModelCapabilityOverride(records, identity);
+  const reported = positiveInteger(facts.contextWindowTokens);
+  const context = override?.contextWindowTokens !== undefined
+    ? exact(override.contextWindowTokens, 'settings-override')
+    : reported
+      ? exact(reported, 'catalog')
+      : fallback(UNKNOWN_CONTEXT_TOKENS);
+  const reportedOutput = positiveInteger(facts.maxOutputTokens);
+  const outputValue = Math.min(
+    override?.maxOutputTokens ?? reportedOutput ?? UNKNOWN_OUTPUT_TOKENS,
+    context.value,
+  );
+  const output = override?.maxOutputTokens !== undefined
+    ? exact(outputValue, 'settings-override')
+    : reportedOutput
+      ? exact(outputValue, 'catalog')
+      : fallback(outputValue);
+  const reportedInput = positiveInteger(facts.maxInputTokens);
+  const inputValue = Math.min(
+    override?.maxInputTokens ?? reportedInput ?? Math.max(1, context.value - output.value),
+    context.value,
+  );
+  const input = override?.maxInputTokens !== undefined
+    ? exact(inputValue, 'settings-override')
+    : reportedInput
+      ? exact(inputValue, 'catalog')
+      : fallback(inputValue);
+  const tools = override?.supportsTools !== undefined
+    ? exact(override.supportsTools, 'settings-override')
+    : exact(facts.supportsTools, 'catalog');
+  const images = override?.supportsImages !== undefined
+    ? exact(override.supportsImages, 'settings-override')
+    : exact(facts.supportsVision, 'catalog');
+  const supportsReasoning = facts.reasoningEfforts.length > 0;
+  const reasoning = override?.supportsReasoning !== undefined
+    ? exact(override.supportsReasoning, 'settings-override')
+    : exact(supportsReasoning, 'catalog');
+  const efforts = override?.reasoningEfforts !== undefined
+    ? exact(override.reasoningEfforts, 'settings-override')
+    : exact(facts.reasoningEfforts, 'catalog');
+  const defaultEffort = override?.defaultReasoningEffort
+    ? exact(override.defaultReasoningEffort, 'settings-override')
+    : undefined;
+  return {
+    contextWindowTokens: context,
+    maxInputTokens: input,
+    maxOutputTokens: output,
+    supportsTools: tools,
+    supportsImages: images,
+    supportsReasoning: reasoning,
+    reasoningEfforts: efforts,
+    ...(defaultEffort ? { defaultReasoningEffort: defaultEffort } : {}),
+  };
 }
