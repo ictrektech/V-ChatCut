@@ -102,6 +102,7 @@ interface LibraryPanelProps {
   onRemoveMediaAsset: (id: string) => void;
   onRemoveMediaAssets: (ids: string[]) => void;
   onPasteMediaAssets: (assets: MediaAsset[], folderId?: string) => void;
+  onOpenSettings?: () => void;
   onRelinkMediaAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Creative-mode skill selection (Skill tab): mirrors the chat composer state. */
   creativeMode: string | null;
@@ -228,7 +229,7 @@ export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddA
           <MediaPoolPanel semanticScopeId={semanticScopeId} assets={assets} folders={mediaFolders} fps={fps} usedAssetIds={usedAssetIds} offlineAssetIds={offlineAssetIds} onAssetLoadError={onAssetLoadError} onImport={onImportMedia} onImportMobile={onImportMobileMedia} directoryImport={directoryImport} directoryImportError={directoryImportError} onAddAsset={onAddMediaItem} onAddAssetsToTimeline={onAddMediaAssetsToTimeline} onAddAssetsToChat={onUseMediaAI}
             onCreateFolder={onCreateMediaFolder} onRenameFolder={onRenameMediaFolder} onDeleteFolder={onDeleteMediaFolder}
             onMoveAssets={onMoveMediaAssets} onRenameAsset={onRenameMediaAsset} onTranscribe={onTranscribeAsset} onRenameAssets={onRenameMediaAssets} onSetFavorite={onSetMediaAssetFavorite} onSetAssetsFavorite={onSetMediaAssetsFavorite} onRemoveAsset={onRemoveMediaAsset} onRemoveAssets={onRemoveMediaAssets} onPasteAssets={onPasteMediaAssets}
-            onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
+            onOpenSettings={onOpenSettings} onRelinkAsset={onRelinkMediaAsset} onAddSolid={onAddSolid} />
         </div>
       ) : isSkills ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, borderTop: `0.5px solid ${theme.border}` }}>

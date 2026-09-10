@@ -10,17 +10,10 @@ import { MediaPoolToolbar, type MediaToolbarMenu } from './MediaPoolToolbar';
 import type { SemanticMatch } from './semantic-search/types';
 import { filterMediaAssets, type MediaSortKey, type MediaTypeFilter } from './mediaPoolFilter';
 import { MobileUploadDialog } from './MobileUploadDialog';
-import { MediaSourceImportDialog } from './MediaSourceImportDialog';
-import { importedMediaSourceToAsset } from './remoteMediaImport';
-import type { ImportedMediaSource } from '../../shared/media-source';
+import { MediaSourceImportControl } from './MediaSourceImportControl';
 import type { MobileUploadRecord } from './mobileUploadApi';
 import { MissingMediaBanner, MusicModelsNotice, RelinkAllDialog } from './MediaPoolOverlays';
-import {
-  MediaPoolDialogs,
-  type MediaAssetDeleteState,
-  type MediaFolderDeleteState,
-  type MediaPromptState,
-} from './MediaPoolDialogs';
+import { MediaPoolDialogs, type MediaAssetDeleteState, type MediaFolderDeleteState, type MediaPromptState } from './MediaPoolDialogs';
 import { MediaPoolGrid, type MediaGridEntry } from './MediaPoolGrid';
 import { useAssetMenu, type AssetMenuPosition } from './useAssetMenu';
 import { assetMenuSelectionIds, batchAssetRename } from './assetMenuSelection';
@@ -307,24 +300,6 @@ export function MediaPoolPanel({
     setCurrentFolderId(undefined);
     setFavoritesOnly(true);
   }, []);
-  const importMediaSources = useCallback(async (imported: ImportedMediaSource[]) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const ready: MediaAsset[] = [];
-      for (const descriptor of imported) {
-        ready.push(await importedMediaSourceToAsset(descriptor, fps));
-      }
-      for (const asset of ready) {
-        onAddAsset(currentFolderId ? { ...asset, folderId: currentFolderId } : asset);
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-      throw reason;
-    } finally {
-      setBusy(false);
-    }
-  }, [currentFolderId, fps, onAddAsset, setBusy]);
   const openAssetMenu = useCallback((
     id: string,
     anchor: HTMLElement,
@@ -518,11 +493,7 @@ export function MediaPoolPanel({
         onRelink={startRelink}
       />
       {mobileUploadOpen && <MobileUploadDialog onClose={() => { setMobileUploadOpen(false); modalFocus.restore(); }} onImport={onImportMobile} />}
-      {mediaSourceOpen && <MediaSourceImportDialog
-        onClose={() => { setMediaSourceOpen(false); modalFocus.restore(); }}
-        onImport={importMediaSources}
-        onOpenSettings={onOpenSettings}
-      />}
+      <MediaSourceImportControl open={mediaSourceOpen} fps={fps} folderId={currentFolderId} onAddAsset={onAddAsset} setBusy={setBusy} setError={setError} onOpenSettings={onOpenSettings} onClose={() => { setMediaSourceOpen(false); modalFocus.restore(); }} />
     </div>
   );
 }

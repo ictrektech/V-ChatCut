@@ -155,6 +155,7 @@ const MODEL_ROUTING_NAMES = [
   'MEDIA_DIR',  // Asset saving directory (''=default public/media/uploads),
   'AGENT_IMPORT_ROOTS', // Agent local-path import whitelist (comma-separated absolute dirs)
   'OPENCHATCUT_SKILLS_DIR', // User skill files directory (''=~/.openchatcut/skills)
+  'OPENCHATCUT_WEBDAV_URL', 'OPENCHATCUT_WEBDAV_USERNAME', 'OPENCHATCUT_IMMICH_URL',
   'PROXY_URL', // Outbound network proxy (''=use HTTPS_PROXY/HTTP_PROXY env)
 ] as const;
 for (const name of MODEL_ROUTING_NAMES) {

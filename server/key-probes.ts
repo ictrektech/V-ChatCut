@@ -4,7 +4,6 @@
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
 // The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
 // Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
-import { proxyDispatcher } from './outbound-proxy.ts';
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -29,42 +28,10 @@ import {
   type ProbeResult,
 } from './key-probe-result.ts';
 import { PROBE_TIMEOUT_MS, runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
+import { fetchWithProxy } from './key-probe-url.ts';
 export { classifyStatus, networkMessage, type ProbeResult } from './key-probe-result.ts';
 export { runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
-// Proxy-aware fetch: attaches the configured outbound proxy (keystore
-// PROXY_URL or HTTPS_PROXY/HTTP_PROXY env) via undici dispatcher.
-type FetchInit = Parameters<typeof fetch>[1] & { dispatcher?: unknown };
-
-// Probes send REAL stored credentials to a user/agent-settable base URL.
-// Loopback and private hosts stay allowed (local models and LAN gateways are
-// legitimate), but cloud metadata / link-local targets and credential-bearing
-// or non-http(s) URLs never are — those only appear in SSRF exfil attempts.
-export function probeUrlError(url: RequestInfo | URL): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(String(url));
-  } catch {
-    return '探测地址不是合法 URL';
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return `探测地址协议不支持:${parsed.protocol}`;
-  }
-  if (parsed.username || parsed.password) return '探测地址不允许携带内嵌凭据';
-  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) || host.startsWith('fe80:')
-    || host === 'metadata.google.internal') {
-    return '探测地址指向云元数据/链路本地网段,已拒绝';
-  }
-  return null;
-}
-
-const fetchWithProxy = (url: RequestInfo | URL, init?: FetchInit): Promise<Response> => {
-  const unsafe = probeUrlError(url);
-  if (unsafe) return Promise.reject(new Error(unsafe));
-  return fetch(url, { ...init, dispatcher: proxyDispatcher() } as RequestInit);
-};
-
-
+export { probeUrlError } from './key-probe-url.ts';
 type Get = (name: KeyName) => string;
 
 interface ProbeDef {

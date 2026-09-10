@@ -1,6 +1,18 @@
 // EN dictionary (field fragmentation, key = Chinese original text). Data files are exempt from the upper limit of row count.
 // Override: components/settings/* + shortcuts/ShortcutsDialog + media/MediaCleanupDialog.
 export default {
+  'AI 相册 · Immich': 'AI Album · Immich',
+  'ICTrek · 芯途异构': 'ICTrek · Heterogeneous AI',
+  'Immich 地址': 'Immich URL',
+  'WebDAV 地址': 'WebDAV URL',
+  '入口：设置 → 素材 · 转写 → 远程素材 → AI 相册。VOS 内置 AI 相册会先尝试当前 VOS 登录用户授权；如果 AI 相册 API 返回 401，或连接独立 Immich，请填写自己的 API Key。': 'Path: Settings → Assets · Transcription → Remote Media → AI Album. The built-in VOS AI Album first uses the current VOS user session. Enter your API key if the AI Album API returns 401 or when connecting to a standalone Immich server.',
+  '前往 ai.ictrek.com 注册并申请 Token': 'Register at ai.ictrek.com and request a token',
+  '密码': 'Password',
+  '每个 VOS 用户单独保存自己的连接凭证。': 'Connection credentials are stored separately for each VOS user.',
+  '用户名': 'Username',
+  '请先前往 ai.ictrek.com 注册账户并申请 API Token，再将 Token 填入下方 API Key，测试连接并选择可用模型。': 'Register at ai.ictrek.com and request an API token, enter it as the API key below, then test the connection and select an available model.',
+  '远程素材': 'Remote Media',
+  '默认地址已配置，无需修改；请使用在 ai.ictrek.com 申请的 Token。': 'The default URL is already configured. Use the token requested at ai.ictrek.com.',
   '当前版本号：{version}': 'Current version: {version}',
   '检查更新': 'Check for updates',
   '检查中…': 'Checking…',

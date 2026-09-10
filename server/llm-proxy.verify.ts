@@ -55,7 +55,6 @@ assert.equal(llmOperationPath('orcarouter'), '/chat/completions');
   } as Record<string, string>);
   const reqFor = (provider: string) => ({ headers: { 'x-openchatcut-provider': provider } } as never);
   assert.deepEqual(llmHeaders(reqFor('ictrek')), { authorization: 'Bearer ictrek-test-key' }, 'ICTrek uses its own token');
-  assert.deepEqual(llmHeaders(reqFor('ictrek')), { authorization: 'Bearer ictrek-test-key' }, 'ICTrek uses its own token');
   assert.throws(() => llmProviderForRequest(reqFor('retired-provider')), /Unsupported LLM provider/);
   for (const preset of LLM_PROVIDER_PRESETS) {
     assert.equal(llmProviderForRequest(reqFor(` ${preset.id.toUpperCase()} `)), preset.id);

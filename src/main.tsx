@@ -48,6 +48,6 @@ async function start(): Promise<void> {
 }
 
 void start().catch((error) => {
-  const message = error instanceof Error ? error.message : 'VOS 用户验证失败';
+  const message = error instanceof Error ? error.message : 'VOS user authentication failed';
   root.textContent = `V-ChatCut 无法启动：${message}`;
 });
