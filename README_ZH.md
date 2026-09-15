@@ -305,7 +305,9 @@ npm run desktop:dev
 
 ### VOS 集成
 
-VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
+VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个互斥 profile，安装时必须选择一个。VOS 根据宿主机 caps 中的架构、CUDA 和 `device-type` 判断可用 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
+
+VOS 用户可在 Agent、视觉、图片、视频、配音和字幕转写设置中选择 V-Router。V-ChatCut 使用当前登录账户读取模型目录，并按功能所需 endpoint 筛选模型；视频生成对应 `videos/generations`。API Key、上游地址和模型管理均留在 V-Router，V-ChatCut 只保存用户选中的模型名。
 
 VOS 包启用 OIDC Fastpath 用户验证，并按 OIDC `sub` 隔离服务端工程、媒体、任务、连接凭证及浏览器存储。数据目录为 `/data/users/<subject-hash>/`。VOS exposed 是应用级视图，默认不作为多用户素材来源；仅公共素材库可由管理员显式开启。旧共享数据只能由 VOS 管理员通过 `POST /api/auth/claim-legacy-data` 主动认领，且不会自动暴露给其他用户。
 

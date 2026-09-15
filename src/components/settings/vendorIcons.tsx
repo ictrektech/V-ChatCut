@@ -37,6 +37,8 @@ import openrouterSvg from '../../../assets/vendor-icons/openrouter.svg?raw';
 import ollamaSvg from '../../../assets/vendor-icons/ollama.svg?raw';
 import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
+import ictrekIcon from '../../../assets/vendor-icons/ictrek.png';
+import vRouterIcon from '../../../assets/vendor-icons/v-router.png';
 
 export type VendorId =
   | 'llm' | 'vrouter' | 'ictrek' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter'
@@ -56,7 +58,6 @@ interface SvgIcon {
 const PROXY_ICON = '<svg viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zm-9-9h18M12 3c2.5 2.6 3.9 5.7 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg>';
 
 const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
-  vrouter: { svg: openrouterSvg, tint: '#5B5BD6' },
   anthropic: { svg: claudeSvg },                    // Agent brain uses Claude starburst (official orange)
   openai: { svg: openaiSvg, tint: theme.text },     // The official ring is a single color, which will match the skin color (dark skin is nearly white/light skin is nearly black)
   copilot: { svg: copilotSvg, tint: theme.text },   // Octicon copilot mark (MIT); monochrome, follows the skin
@@ -93,9 +94,13 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
   vision: { svg: visionSvg },                          // Vision bypass feature mark (generated)
 };
 
+const RASTER_ICONS: Partial<Record<VendorId, string>> = {
+  ictrek: ictrekIcon,
+  vrouter: vRouterIcon,
+};
+
 // Official SVG not included / Non-provider brand → monogram
 const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: string }>> = {
-  ictrek: { bg: '#2463eb', mono: 'IC', fg: '#ffffff' },
   llm: { bg: '#34363c', mono: 'AI', fg: '#f7f7f8' },
   e2b: { bg: '#FF8800', mono: 'E2', fg: '#40230a' },
   localdisk: { bg: '#5f6b7a', mono: 'HD', fg: '#eef2f7' }, // Local disk (non-vendor, neutral gray)
@@ -120,6 +125,10 @@ interface VendorIconProps {
 }
 
 export function VendorIcon({ vendor, size = 18 }: VendorIconProps) {
+  const raster = RASTER_ICONS[vendor];
+  if (raster) {
+    return <img aria-hidden className="cc-vendor-icon" src={raster} alt="" style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), objectFit: 'cover', flex: '0 0 auto' }} />;
+  }
   const icon = SVG_ICONS[vendor];
   if (icon) {
     const style: CSSProperties = {

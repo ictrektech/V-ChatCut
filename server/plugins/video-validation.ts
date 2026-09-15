@@ -4,7 +4,7 @@ export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter';
   prompt?: string;
   name?: string;
   durationSeconds?: number | string;
@@ -34,7 +34,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter';
   prompt: string;
   durationSeconds: number;
   durationSpecified: boolean;
@@ -229,9 +229,20 @@ function validateOfox(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+function validateVRouter(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt || input.prompt.length > 4000) throw new Error('vrouter prompt is required and must be at most 4000 characters');
+  if (input.firstFramePath || input.lastFramePath || input.refImagePaths.length || input.refVideoPaths.length || input.refAudioPaths.length) {
+    throw new Error('vrouter video currently accepts text prompts only; reference support depends on the selected upstream');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length || input.refVideoMode) throw new Error('provider-specific video editing options are not supported by vrouter');
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  rejectSeedanceOptions(input);
+  return input;
+}
+
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, or ofox');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox' && input.model !== 'vrouter') {
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, or vrouter');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
@@ -239,5 +250,6 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
   if (normalized.model === 'kling') return validateKling(normalized);
   if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
   if (normalized.model === 'ofox') return validateOfox(normalized);
+  if (normalized.model === 'vrouter') return validateVRouter(normalized);
   return validateSeedance(normalized);
 }

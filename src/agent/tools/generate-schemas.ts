@@ -146,11 +146,11 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, OFox, or V-Router video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {
-        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet.' }, // minimax: hailuo enum
+        model: { type: 'string', enum: ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'vrouter'], description: 'hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway. vrouter uses the video model selected from the current VOS account and currently accepts text-to-video inputs.' }, // minimax: hailuo enum
         prompt: { type: 'string', description: 'Required for normal generation and Kling intelligence; omit for Kling customize.' },
         name: { type: 'string' },
         durationSeconds: { anyOf: [{ type: 'number' }, { type: 'string' }], description: 'Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API).' }, // minimax: hailuo durations

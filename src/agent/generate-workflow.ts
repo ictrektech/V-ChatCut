@@ -31,6 +31,7 @@ export const GENERATE_WORKFLOW = `
 ## Video generation
 - Use submit_video only after an explicit video-generation request. Default to seedance2 when configured, 5 seconds, 16:9, and 720p; never silently add variants, duration, or quality.
 - Seedance supports 2–15 seconds, resolution 480p/720p(default)/1080p/4k, typed image/video/audio references, optional audio/seed/camera/watermark/last-frame/expiry/priority controls. Kling supports 3–15 seconds, std/pro, images (≤7, or ≤4 with one refVideo), refVideoMode feature|base, customize/intelligence multi-shot; use @ImageN/@Video1 in prompts. Hailuo supports 6 or 10 seconds, 512p (Hailuo-02), 720p→768P, or 1080p (6s only), firstFrame/lastFrame, optional promptOptimizer/fastPretreatment, or S2V-01 subject-reference via firstFrame when that model is selected; no multi-ref multi-shot.
+- V-Router uses the current VOS account's selected model with videos/generations capability. This integration currently sends text-to-video prompt, duration, aspect ratio, and resolution; the selected upstream validates its own supported values.
 - References must be project asset IDs and must stay in refImages/refVideos/refAudios by media type. lastFrame requires firstFrame.
 - For Kling customize, omit top-level prompt; use 2–6 consecutive multiPrompts whose integer durations sum to durationSeconds.
 - submit_video returns immediately with a jobId. Call track_progress target=generation with action=status or action=wait; only a successful tracked result creates the media-pool video asset.

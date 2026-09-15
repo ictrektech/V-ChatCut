@@ -17,6 +17,8 @@ Installation requires exactly one profile. VOS checks `arch`, `software: cuda`, 
 
 Only AMD64 and ARM64 frontend images are built. Every ARM64 backend profile reuses the ARM64 frontend image.
 
+Agent, vision, image, video, voice, and transcription features can use the current VOS account's V-Router models. Video settings list only models that declare `videos/generations`; upstream credentials and model configuration remain managed by V-Router.
+
 ## Data
 
 V-ChatCut authenticates the current user through the VOS OIDC Fastpath and uses the immutable OIDC `sub` claim to partition projects, uploaded media, settings, generation jobs, export state, localStorage, sessionStorage, and IndexedDB under `data/users/<subject-hash>/`.

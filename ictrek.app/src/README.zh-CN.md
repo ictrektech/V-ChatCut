@@ -17,6 +17,8 @@ V-ChatCut 是本地优先、Agent 驱动的多轨视频编辑器，支持素材�
 
 前端只构建 AMD64 和 ARM64 两种镜像；所有 ARM64 后端 profile 复用 ARM64 前端镜像。
 
+Agent、视觉、图片、视频、配音和字幕转写均可使用当前 VOS 账户的 V-Router 模型。视频设置只列出声明 `videos/generations` 的模型；上游凭据和模型配置仍由 V-Router 管理。
+
 ## 数据
 
 V-ChatCut 使用 VOS OIDC Fastpath 验证当前用户，并以不可变的 OIDC `sub` 建立用户目录。每个用户的工程、上传素材、设置、生成任务和导出状态分别保存在 `data/users/<用户哈希>/` 下；浏览器 localStorage、sessionStorage 和 IndexedDB 也按同一身份分区。切换 VOS 用户不会复用上一用户的数据。

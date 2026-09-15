@@ -133,6 +133,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
           { value: 'ofox', label: 'OFox · 多模型' },
+          { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
         ]),
         vendors: [
           { key: 'video/seedance', vendor: 'seedance', title: 'Seedance · 火山', fields: [
@@ -160,6 +161,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               modelText('OFOX_VIDEO_MODEL', '视频模型', 'bytedance/seedance-2.0-fast',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
+            ] },
+          { key: 'video/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。当前接入文生视频，参数能力由所选上游模型决定。',
+            fields: [
+              modelText('V_ROUTER_VIDEO_MODEL', '视频模型', '从 V-Router 选择',
+                '测试连接后选择声明 videos/generations 的模型。', true),
             ] },
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',

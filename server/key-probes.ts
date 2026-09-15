@@ -398,6 +398,11 @@ export const PROBES: Record<string, ProbeDef> = {
     }),
     models: parseModelCatalog,
   },
+  'video/vrouter': {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: (body) => parseVRouterModelCatalog(body, 'videos/generations'),
+  },
   'music/mureka': {
     needs: [['MUREKA_API_KEY']],
     run: (get) => fetch(`${base(get, 'MUREKA_BASE_URL', 'https://api.mureka.ai')}/v1/account/billing`, {

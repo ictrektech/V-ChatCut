@@ -223,7 +223,8 @@ export function computeCaps(): Caps {
       has("KLING_API_KEY") ||
       has("MINIMAX_API_KEY") ||
       has("BYTEPLUS_API_KEY") ||
-      has("LLM_OFOX_API_KEY"),
+      has("LLM_OFOX_API_KEY") ||
+      has("V_ROUTER_VIDEO_MODEL"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:

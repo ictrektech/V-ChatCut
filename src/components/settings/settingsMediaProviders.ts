@@ -244,7 +244,7 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],
   'grok-imagine': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
-  vrouter: [['V_ROUTER_IMAGE_MODEL'], ['V_ROUTER_TTS_MODEL'], ['V_ROUTER_TRANSCRIPTION_MODEL']],
+  vrouter: [['V_ROUTER_IMAGE_MODEL'], ['V_ROUTER_VIDEO_MODEL'], ['V_ROUTER_TTS_MODEL'], ['V_ROUTER_TRANSCRIPTION_MODEL']],
   'grok-imagine-video': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
   ofox: [['LLM_OFOX_API_KEY']],
   elevenlabs: [['ELEVENLABS_API_KEY']],

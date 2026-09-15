@@ -329,6 +329,9 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get ofoxVideoModel() {
         return getKey("OFOX_VIDEO_MODEL") || "bytedance/seedance-2.0-fast";
       },
+      get vrouterVideoModel() {
+        return getKey("V_ROUTER_VIDEO_MODEL");
+      },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },

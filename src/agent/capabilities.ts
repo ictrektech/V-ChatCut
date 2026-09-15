@@ -80,6 +80,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'V-Router', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_TTS_MODEL']] },
   ],
   video: [
+    { label: 'V-Router', arg: 'vrouter', argKey: 'model', need: [['V_ROUTER_VIDEO_MODEL']] },
     { label: 'OFox', arg: 'ofox', argKey: 'model', need: [['LLM_OFOX_API_KEY']] },
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
     { label: 'Kling', arg: 'kling', argKey: 'model', need: [['KLING_API_KEY']] },
