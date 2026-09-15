@@ -6,6 +6,8 @@ V-ChatCut is a local-first, agent-native multitrack video editor with media mana
 
 ## Profiles
 
+Installation requires exactly one profile. VOS checks `arch`, `software: cuda`, and `device-type` from the host's `/etc/vos/caps/*.yaml`; generic ARM64 hosts use `device-type: generic`, L4T hosts use `l4t` or `jetson`, and Thor / Spark hosts use `thor-spark` or `thor`. Incompatible profiles are disabled in the installer. Non-CUDA profiles remain CPU fallbacks and therefore require only the matching CPU architecture.
+
 - `amd-with-cuda`: AMD64 NVIDIA CUDA with NVENC and GPU rendering, falling back to software encoding when unavailable.
 - `amd-without-cuda`: AMD64 CPU with software rendering and libx264.
 - `arm-with-cuda`: Generic ARM64 NVIDIA CUDA with hardware encoder probing.

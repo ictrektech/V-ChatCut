@@ -11,6 +11,13 @@ The frontend has two architecture images: AMD64 and ARM64. Backend images are pr
 - `l4t`
 - `thor-spark`
 
+The manifest requires exactly one profile. Profile caps select the CPU
+architecture, require `software: cuda` for NVIDIA runtime profiles, distinguish
+generic ARM64 from `l4t` and `thor-spark` through `device-type`, and retain the
+non-CUDA profiles as architecture-only CPU fallbacks. Target hosts publish these
+values in `/etc/vos/caps/*.yaml`; VOS disables incompatible profiles before
+installation.
+
 Source templates live in `src/`. Generated package output belongs in `dist/` and must not be committed.
 The VOS icon is `src/icon.png`, a 256×256 8-bit RGBA PNG with transparent
 corners. `package.sh` stages it at the root of `app.tar.gz` and validates its

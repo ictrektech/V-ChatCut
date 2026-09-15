@@ -167,6 +167,47 @@ PY
   manifest_text="$(tar xOf "$app_tarball" manifest.yml)"
   printf '%s\n' "$manifest_text" | grep -Fq "  basePath: ${FRONTEND_BASE_PATH}" \
     || die "manifest frontend basePath is invalid"
+  python3 - "$app_tarball" <<'PY'
+import sys
+import tarfile
+import yaml
+
+expected = {
+    "amd-with-cuda": {"arch": "amd64", "software": ["cuda"]},
+    "amd-without-cuda": {"arch": "amd64"},
+    "arm-with-cuda": {
+        "device-type": "generic",
+        "arch": "arm64",
+        "software": ["cuda"],
+    },
+    "arm-without-cuda": {"arch": "arm64"},
+    "l4t": {
+        "device-type": [{"any-of": ["l4t", "jetson"]}],
+        "arch": "arm64",
+        "software": ["cuda"],
+    },
+    "thor-spark": {
+        "device-type": [{"any-of": ["thor-spark", "thor"]}],
+        "arch": "arm64",
+        "software": ["cuda"],
+    },
+}
+with tarfile.open(sys.argv[1], "r:gz") as archive:
+    source = archive.extractfile("manifest.yml")
+    if source is None:
+        raise SystemExit("manifest.yml is missing")
+    manifest = yaml.safe_load(source)
+if manifest.get("require-profiles") is not True:
+    raise SystemExit("manifest must require one profile")
+profiles = manifest.get("profiles") or []
+actual = {profile.get("name"): profile.get("caps") for profile in profiles}
+if actual != expected:
+    raise SystemExit(f"profile caps do not match the supported platforms: {actual}")
+names = set(expected)
+for profile in profiles:
+    if set(profile.get("conflicts") or []) != names - {profile["name"]}:
+        raise SystemExit(f"profile conflicts are incomplete: {profile['name']}")
+PY
 
   routers_text="$(tar xOf "$app_tarball" routers.yml)"
   printf '%s\n' "$routers_text" | grep -Fq "  - id: ${ROUTER_PAGE_ID}" || die "router page id is invalid"

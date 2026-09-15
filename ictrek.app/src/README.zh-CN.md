@@ -6,6 +6,8 @@ V-ChatCut 是本地优先、Agent 驱动的多轨视频编辑器，支持素材�
 
 ## Profile
 
+安装时必须且只能选择一个 profile。VOS 会按宿主机 `/etc/vos/caps/*.yaml` 中的 `arch`、`software: cuda` 和 `device-type` 做兼容性预检；通用 ARM64 使用 `device-type: generic`，L4T 设备使用 `l4t` 或 `jetson`，Thor / Spark 设备使用 `thor-spark` 或 `thor`。不匹配的 profile 会在安装页置灰。无 CUDA profile 是 CPU fallback，因此只要求对应 CPU 架构。
+
 - `amd-with-cuda`：AMD64 NVIDIA CUDA，使用 NVENC 和 GPU 渲染，失败时自动回退软件编码。
 - `amd-without-cuda`：AMD64 CPU，使用软件渲染和 libx264。
 - `arm-with-cuda`：通用 ARM64 NVIDIA CUDA，启用硬件编码探测。
