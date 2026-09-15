@@ -6,6 +6,8 @@ import { extname, join } from 'node:path';
 import type { Plugin } from 'vite';
 import { generateImage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
+import { getKey } from '../keystore.ts';
 
 import { uploadDir } from '../media-dir.ts';
 import { fetchGeneratedResult } from './result-download.ts';
@@ -76,7 +78,7 @@ interface ImageRequest {
 }
 
 export interface ValidImageRequest {
-  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine';
+  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'vrouter';
   prompt: string;
   aspectRatio?: string;
   imageSize: string;
@@ -143,7 +145,7 @@ function rejectForeignImageOptions(input: ImageRequest, model: ValidImageRequest
 /** Pure request validation — exported for unit checks. */
 export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   const model = String(input.model ?? 'gpt-image-2');
-  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine') {
+  if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine' && model !== 'vrouter') {
     throw new Error(`unsupported model ${model}`);
   }
   const prompt = String(input.prompt ?? '').trim();
@@ -158,7 +160,7 @@ export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   if (!SIZES.has(imageSize)) throw new Error(`unsupported image size ${imageSize}`);
   if (!QUALITIES.has(quality)) throw new Error(`unsupported quality ${quality}`);
   const referencePaths = input.referencePaths ?? [];
-  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' ? 16 : model === 'image-01' ? 1 : 0;
+  const referenceLimit = model === 'nano-banana' ? 14 : model === 'gpt-image-2' || model === 'vrouter' ? 16 : model === 'image-01' ? 1 : 0;
   // wavespeed and byteplus (Seedream) are text-to-image only in this integration; no reference-image support yet.
   if (referencePaths.length > referenceLimit) {
     throw new Error(`too many reference images for ${model}`);
@@ -372,7 +374,15 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
             ? [input.width, input.height]
             : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
-          if (model === 'nano-banana') {
+          if (model === 'vrouter') {
+            const token = vRouterAccessToken();
+            const routedModel = getKey('V_ROUTER_IMAGE_MODEL');
+            if (!token || !routedModel) throw new Error('V-Router image model requires a VOS login and selected model');
+            images = await callProvider(vRouterApiBaseUrl(), token, {
+              model: routedModel, prompt, quality, count, size: `${width}x${height}`, referencePaths, maskPath,
+              background, moderation, inputFidelity, outputFormat, outputCompression,
+            });
+          } else if (model === 'nano-banana') {
             if (!options.geminiApiKey) throw new Error('Nano Banana is not configured. Set GEMINI_API_KEY in .env.local.');
             if (!aspectRatio) throw new Error('Nano Banana requires aspectRatio');
             images = await callGeminiProvider(options.geminiBaseUrl, options.geminiApiKey, options.geminiModel, {

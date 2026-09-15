@@ -99,6 +99,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     { value: 'gemini', label: 'Google Gemini' },
     { value: 'mistral', label: 'Mistral Voxtral' },
     { value: 'cartesia', label: 'Cartesia' },
+    { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
   ]),
   vendors: [
     {
@@ -151,6 +152,12 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       ],
     },
     {
+      key: 'voice/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
+      note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。',
+      fields: [modelText('V_ROUTER_TTS_MODEL', '配音模型', '从 V-Router 选择',
+        '测试连接后选择声明 audio/speech 的模型。', true)],
+    },
+    {
       key: 'voice/openai', vendor: 'openai', title: 'OpenAI', fields: [
         secret('OPENAI_API_KEY', 'API Key'),
         text('IMAGE_BASE_URL', 'Base URL', '默认 https://api.openai.com'),
@@ -193,10 +200,15 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
     { value: 'groq', label: 'Groq（云端）' },
     { value: 'elevenlabs', label: 'ElevenLabs Scribe（云端）' },
     { value: 'cartesia', label: 'Cartesia（云端）' },
+    { value: 'vrouter', label: 'V-Router（VOS 账户）' },
   ], 'AssemblyAI（默认）'),
   vendors: [
     transcriptionPage('assemblyai', 'assemblyai', 'AssemblyAI', [secret('ASSEMBLYAI_API_KEY', 'API Key')]),
     localAsrPage,
+    transcriptionPage('vrouter', 'vrouter', 'V-Router · VOS 账户模型', [
+      modelText('V_ROUTER_TRANSCRIPTION_MODEL', '转写模型', '从 V-Router 选择',
+        '使用当前 VOS 登录账户鉴权；测试连接后选择声明 audio/transcriptions 的模型。', true),
+    ]),
     transcriptionPage('openai', 'openai', 'OpenAI', [
       secret('OPENAI_API_KEY', 'API Key'),
       text('IMAGE_BASE_URL', 'Base URL', '默认 https://api.openai.com'),
@@ -232,6 +244,7 @@ export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],
   'grok-imagine': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
+  vrouter: [['V_ROUTER_IMAGE_MODEL'], ['V_ROUTER_TTS_MODEL'], ['V_ROUTER_TRANSCRIPTION_MODEL']],
   'grok-imagine-video': [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']],
   ofox: [['LLM_OFOX_API_KEY']],
   elevenlabs: [['ELEVENLABS_API_KEY']],

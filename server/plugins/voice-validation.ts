@@ -103,11 +103,11 @@ function validateMinimalProvider(input: VoiceRequest, label: string): void {
     input.subtitleEnable, input.subtitleType],
   `${label} only accepts text, voiceId, and modelId`);
 }
-function isAiProvider(provider: string | undefined): provider is 'openai' | 'gemini' | 'mistral' | 'cartesia' {
-  return provider === 'openai' || provider === 'gemini' || provider === 'mistral' || provider === 'cartesia';
+function isAiProvider(provider: string | undefined): provider is 'openai' | 'gemini' | 'mistral' | 'cartesia' | 'vrouter' {
+  return provider === 'openai' || provider === 'gemini' || provider === 'mistral' || provider === 'cartesia' || provider === 'vrouter';
 }
 
-function validateAiProvider(input: VoiceRequest, provider: 'openai' | 'gemini' | 'mistral' | 'cartesia'): void {
+function validateAiProvider(input: VoiceRequest, provider: 'openai' | 'gemini' | 'mistral' | 'cartesia' | 'vrouter'): void {
   if (input.speed != null && provider !== 'openai' && provider !== 'cartesia') {
     throw new Error(`${provider} does not support speed`);
   }

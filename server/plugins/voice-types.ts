@@ -2,7 +2,7 @@ import type { MinimaxLanguageBoost } from '../../shared/media-provider-params.ts
 
 export type VoiceProvider =
   | 'elevenlabs' | 'doubao' | 'minimax' | 'inworld' | 'fishaudio' | 'speechify'
-  | 'openai' | 'gemini' | 'mistral' | 'cartesia';
+  | 'openai' | 'gemini' | 'mistral' | 'cartesia' | 'vrouter';
 export type MinimaxVoiceFormat = 'mp3' | 'pcm' | 'flac' | 'wav' | 'pcmu_raw' | 'pcmu_wav' | 'opus';
 export type VoiceEffect = 'spacious_echo' | 'auditorium_echo' | 'lofi_telephone' | 'robotic';
 
@@ -18,6 +18,9 @@ export interface AiVoiceOptions {
   mistralModel: string;
   cartesiaApiKey: string;
   cartesiaModel: string;
+  vrouterBaseUrl: string;
+  vrouterApiKey: string;
+  vrouterModel: string;
 }
 
 export interface VoiceOptions {

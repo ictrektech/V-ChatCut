@@ -28,6 +28,7 @@ const MODES: readonly { value: VisionModelMode; label: string; hint: string }[] 
 ];
 
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
+  vrouter: 'V-Router',
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ictrek: 'ICTrek',

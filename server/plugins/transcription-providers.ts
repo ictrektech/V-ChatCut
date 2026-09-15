@@ -29,7 +29,7 @@ function requireProviderKey(options: TranscriptionOptions, provider: CloudTransc
       : provider === 'deepgram' ? options.deepgramApiKey
         : provider === 'groq' ? options.groqApiKey
           : provider === 'elevenlabs' ? options.elevenApiKey
-            : options.cartesiaApiKey;
+            : provider === 'cartesia' ? options.cartesiaApiKey : options.vrouterApiKey;
   if (key) return key;
   const label = provider === 'elevenlabs' ? 'ElevenLabs' : provider[0]!.toUpperCase() + provider.slice(1);
   throw new TranscriptionConfigurationError(`${label} API key is not configured`);
@@ -45,6 +45,11 @@ export function assertTranscriptionProviderConfigured(
 async function runProvider(options: TranscriptionOptions, request: CloudTranscriptionRequest) {
   const key = requireProviderKey(options, request.provider);
   const common = { audio: request.audio, maxRetries: 1 } as const;
+  if (request.provider === 'vrouter') return transcribe({ ...common,
+    model: createOpenAI({ apiKey: key, baseURL: options.vrouterBaseUrl }).transcription(options.vrouterModel),
+    providerOptions: { openai: { ...(request.language === 'auto' ? {} : { language: request.language }),
+      timestampGranularities: ['word', 'segment'] } },
+  });
   if (request.provider === 'openai') return transcribe({ ...common,
     model: createOpenAI({ apiKey: key, baseURL: versionedApiBaseUrl(options.openaiBaseUrl, 'v1') }).transcription(options.openaiModel),
     providerOptions: { openai: { ...(request.language === 'auto' ? {} : { language: request.language }),

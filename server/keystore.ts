@@ -204,7 +204,8 @@ export function computeCaps(): Caps {
       has("GEMINI_API_KEY") ||
       has("MINIMAX_API_KEY") ||
       has("WAVESPEED_API_KEY") ||
-      has("BYTEPLUS_API_KEY"),
+      has("BYTEPLUS_API_KEY") ||
+      has("V_ROUTER_IMAGE_MODEL"),
     voice:
       (has("DOUBAO_TTS_APP_ID") && has("DOUBAO_TTS_ACCESS_KEY")) ||
       has("ELEVENLABS_API_KEY") ||
@@ -215,7 +216,8 @@ export function computeCaps(): Caps {
       (getKey("PREFERRED_VOICE_VENDOR") === "openai" && has("OPENAI_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "gemini" && has("GEMINI_API_KEY")) ||
       (getKey("PREFERRED_VOICE_VENDOR") === "mistral" && has("LLM_MISTRAL_API_KEY")) ||
-      (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")),
+      (getKey("PREFERRED_VOICE_VENDOR") === "cartesia" && has("CARTESIA_API_KEY")) ||
+      (getKey("PREFERRED_VOICE_VENDOR") === "vrouter" && has("V_ROUTER_TTS_MODEL")),
     video:
       has("SEEDANCE_API_KEY") ||
       has("KLING_API_KEY") ||

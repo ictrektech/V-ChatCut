@@ -93,8 +93,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'wavespeed', label: 'WaveSpeed' },
           { value: 'byteplus', label: 'BytePlus · Seedream' },
           { value: 'grok-imagine', label: 'xAI Grok Imagine' },
+          { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
         ]),
         vendors: [
+          { key: 'image/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。',
+            fields: [modelText('V_ROUTER_IMAGE_MODEL', '生图模型', '从 V-Router 选择',
+              '测试连接后选择声明 images/generations 的模型。', true)] },
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
             secret('IMAGE_API_KEY', 'API Key（gpt-image）'),
             text('IMAGE_BASE_URL', 'Base URL', '默认 https://api.openai.com'),

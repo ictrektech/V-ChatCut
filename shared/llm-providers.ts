@@ -14,6 +14,13 @@ interface LlmProviderPreset {
 
 export const LLM_PROVIDER_PRESETS = [
   {
+    id: 'vrouter',
+    label: 'V-Router · VOS 账户模型',
+    protocol: 'openai-compatible',
+    baseUrl: 'http://v-router:8080/v1',
+    defaultModel: '',
+  },
+  {
     id: 'anthropic',
     label: 'Anthropic · Claude',
     protocol: 'anthropic',

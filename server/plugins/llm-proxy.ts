@@ -10,6 +10,7 @@ import {
 import { resolveLlmProviderConfig } from '../llm-config.ts';
 import { xaiOauthAccessToken } from '../xai-oauth-session.ts';
 import { proxyMiddleware } from '../proxy.ts';
+import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
 
 function keyReader(name: string): string {
   return getKey(name as KeyName);
@@ -21,11 +22,16 @@ export function llmProviderForRequest(req?: IncomingMessage): LlmProvider {
 }
 
 export function llmTarget(req?: IncomingMessage): string {
-  return resolveLlmProviderConfig(llmProviderForRequest(req), keyReader).baseUrl;
+  const provider = llmProviderForRequest(req);
+  return provider === 'vrouter' ? vRouterApiBaseUrl() : resolveLlmProviderConfig(provider, keyReader).baseUrl;
 }
 
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
+  if (config.provider === 'vrouter') {
+    const token = vRouterAccessToken();
+    return token ? { authorization: `Bearer ${token}` } : {};
+  }
   if (config.provider === 'xai-oauth') {
     // OAuth requests only trust the active in-memory session. API-key accounts
     // use the separate xai provider and LLM_XAI_API_KEY slot.

@@ -33,7 +33,7 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
     return { ...shared, width, height, seed: num(args.seed), promptOptimizer: bool(args.promptOptimizer) };
   }
   if (model === 'nano-banana') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
-  if (model === 'wavespeed' || model === 'byteplus') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height };
+  if (model === 'wavespeed' || model === 'byteplus' || model === 'vrouter') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height };
   const outputFormat = args.outputFormat as SubmitImageArgs['outputFormat'];
   return {
     ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height,

@@ -1,6 +1,7 @@
 import { getKey } from '../keystore.ts';
 import type { TranscriptionOptions } from './transcription-types.ts';
 import type { AiVoiceOptions } from './voice-types.ts';
+import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
 
 export function versionedApiBaseUrl(baseUrl: string, version: string): string {
   const clean = baseUrl.replace(/\/+$/, '');
@@ -20,6 +21,9 @@ export function aiVoiceOptions(): AiVoiceOptions {
     get mistralModel() { return getKey('MISTRAL_TTS_MODEL') || 'voxtral-mini-tts-2603'; },
     get cartesiaApiKey() { return getKey('CARTESIA_API_KEY'); },
     get cartesiaModel() { return getKey('CARTESIA_TTS_MODEL') || 'sonic-3'; },
+    get vrouterBaseUrl() { return vRouterApiBaseUrl(); },
+    get vrouterApiKey() { return vRouterAccessToken(); },
+    get vrouterModel() { return getKey('V_ROUTER_TTS_MODEL'); },
   };
 }
 
@@ -40,6 +44,9 @@ export function transcriptionOptions(): TranscriptionOptions {
     get elevenModel() { return getKey('ELEVENLABS_TRANSCRIPTION_MODEL') || 'scribe_v2'; },
     get cartesiaApiKey() { return getKey('CARTESIA_API_KEY'); },
     get cartesiaModel() { return getKey('CARTESIA_TRANSCRIPTION_MODEL') || 'ink-whisper'; },
+    get vrouterBaseUrl() { return vRouterApiBaseUrl(); },
+    get vrouterApiKey() { return vRouterAccessToken(); },
+    get vrouterModel() { return getKey('V_ROUTER_TRANSCRIPTION_MODEL'); },
     get language() { return getKey('TRANSCRIPTION_LANGUAGE') || 'zh'; },
     get diarization() { return getKey('TRANSCRIPTION_DIARIZATION') !== '0'; },
   };

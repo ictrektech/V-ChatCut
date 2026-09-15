@@ -8,7 +8,7 @@ import { versionedApiBaseUrl } from './media-provider-config.ts';
 
 import type { ValidVoiceRequest, VoiceOptions, VoiceProvider } from './voice-types.ts';
 
-export type AiVoiceProvider = Extract<VoiceProvider, 'openai' | 'gemini' | 'mistral' | 'cartesia'>;
+export type AiVoiceProvider = Extract<VoiceProvider, 'openai' | 'gemini' | 'mistral' | 'cartesia' | 'vrouter'>;
 
 export interface AiVoiceAudio {
   bytes: Buffer;
@@ -17,14 +17,14 @@ export interface AiVoiceAudio {
 }
 
 export function isAiVoiceProvider(provider: VoiceProvider): provider is AiVoiceProvider {
-  return provider === 'openai' || provider === 'gemini' || provider === 'mistral' || provider === 'cartesia';
+  return provider === 'openai' || provider === 'gemini' || provider === 'mistral' || provider === 'cartesia' || provider === 'vrouter';
 }
 
 function requireProviderKey(options: VoiceOptions, provider: AiVoiceProvider): string {
   const key = provider === 'openai' ? options.ai.openaiApiKey
     : provider === 'gemini' ? options.ai.geminiApiKey
     : provider === 'mistral' ? options.ai.mistralApiKey
-    : options.ai.cartesiaApiKey;
+    : provider === 'cartesia' ? options.ai.cartesiaApiKey : options.ai.vrouterApiKey;
   if (key) return key;
   const label = provider === 'openai' ? 'OpenAI' : provider[0]!.toUpperCase() + provider.slice(1);
   throw new Error(`${label} API key is not configured`);
@@ -47,6 +47,10 @@ async function runAiProvider(
 ): Promise<SpeechResult> {
   const apiKey = requireProviderKey(options, provider);
   const common = { text: input.text, voice: input.voiceId, outputFormat: input.outputFormat } as const;
+  if (provider === 'vrouter') return generateSpeech({ ...common,
+    model: createOpenAI({ apiKey, baseURL: options.ai.vrouterBaseUrl }).speech(input.modelId || options.ai.vrouterModel),
+    instructions: input.instructions, speed: input.speed,
+  });
   if (provider === 'openai') return generateSpeech({ ...common,
     model: createOpenAI({ apiKey, baseURL: versionedApiBaseUrl(options.ai.openaiBaseUrl, 'v1') }).speech(input.modelId || options.ai.openaiModel),
     instructions: input.instructions, speed: input.speed,

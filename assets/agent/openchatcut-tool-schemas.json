@@ -1160,9 +1160,10 @@
               "image-01",
               "wavespeed",
               "byteplus",
-              "grok-imagine"
+              "grok-imagine",
+              "vrouter"
             ],
-            "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+            "description": "gpt-image-2 is the default; vrouter uses the image model selected from the current VOS account V-Router catalog."
           },
           "prompt": {
             "type": "string",

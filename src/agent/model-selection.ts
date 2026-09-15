@@ -97,7 +97,9 @@ function apiChoices(
   return LLM_PROVIDER_PRESETS.flatMap((preset): AgentModelChoice[] => {
     const names = llmProviderConfigNames(preset.id);
     const savedModel = models[names.model]?.trim() ?? '';
-    if (isLocalLlmProvider(preset.id) ? !savedModel : !keys[names.apiKey]?.configured) return [];
+    if (preset.id === 'vrouter' || isLocalLlmProvider(preset.id)) {
+      if (!savedModel) return [];
+    } else if (!keys[names.apiKey]?.configured) return [];
     const model = savedModel || defaultModelForProvider(preset.id);
     const identity: ModelIdentity = { backend: 'api', provider: preset.id, modelId: model };
     return [{

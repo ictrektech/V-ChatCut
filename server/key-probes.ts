@@ -21,6 +21,7 @@ import {
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
+import { vRouterHeaders, vRouterModelCatalogUrl } from './v-router-client.ts';
 import {
   classifyStatus,
   networkMessage,
@@ -55,6 +56,11 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   const apiKeyName = names.apiKey as KeyName;
   const baseUrlName = names.baseUrl as KeyName;
   const isLocal = isLocalLlmProvider(provider);
+  if (provider === 'vrouter') return {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: parseVRouterModelCatalog,
+  };
   return {
     needs: isLocal ? [[]] : [[apiKeyName]],
     run: (get) => {
@@ -69,6 +75,17 @@ function llmProbe(provider: LlmProvider): ProbeDef {
     },
     models: parseModelCatalog,
   };
+}
+
+export function parseVRouterModelCatalog(bodyText: string, endpoint?: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; endpoints?: unknown }> };
+    return [...new Set((body.models ?? []).flatMap((row) => {
+      const endpoints = Array.isArray(row.endpoints) ? row.endpoints : [];
+      if (endpoint && endpoints.length && !endpoints.includes(endpoint)) return [];
+      return typeof row.qualified === 'string' && row.qualified.trim() ? [row.qualified.trim()] : [];
+    }))].sort((a, b) => a.localeCompare(b));
+  } catch { return []; }
 }
 
 export function parseModelCatalog(bodyText: string): string[] {
@@ -289,6 +306,21 @@ export const PROBES: Record<string, ProbeDef> = {
     run: (get) => fetch(`${base(get, 'IMAGE_BASE_URL', 'https://api.openai.com')}/v1/models`, {
       signal: t(), headers: bearer(get('IMAGE_API_KEY') || get('OPENAI_API_KEY')),
     }),
+  },
+  'voice/vrouter': {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: (body) => parseVRouterModelCatalog(body, 'audio/speech'),
+  },
+  'image/vrouter': {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: (body) => parseVRouterModelCatalog(body, 'images/generations'),
+  },
+  'transcription/vrouter': {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: (body) => parseVRouterModelCatalog(body, 'audio/transcriptions'),
   },
   'image/gemini': geminiMediaProbe,
   'image/minimax': minimaxProbe,
