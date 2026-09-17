@@ -154,8 +154,12 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     {
       key: 'voice/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
       note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。',
-      fields: [modelText('V_ROUTER_TTS_MODEL', '配音模型', '从 V-Router 选择',
-        '测试连接后选择声明 audio/speech 的模型。', true)],
+      fields: [
+        modelText('V_ROUTER_TTS_MODEL', '配音模型', '从 V-Router 选择',
+          '测试连接后选择声明 audio/speech 的模型。', true),
+        modelText('V_ROUTER_TTS_VOICE_ID', '默认音色', '先选择模型',
+          '选好模型后再次测试，即可读取该模型支持的音色。', true),
+      ],
     },
     {
       key: 'voice/openai', vendor: 'openai', title: 'OpenAI', fields: [

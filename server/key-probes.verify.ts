@@ -18,22 +18,25 @@ delete process.env.OPENCHATCUT_DATA_DIR;
 process.on('exit', () => rmSync(fixtureHome, { recursive: true, force: true }));
 
 const {
-  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, runProbe, runProxyProbe,
+  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, parseVRouterVoices, runProbe, runProxyProbe,
 } = await import('./key-probes.ts');
+
+assert.deepEqual(parseVRouterVoices('{"voices":[{"id":"default"},{"id":"speaker_1"},{"id":"default"}]}'), ['default', 'speaker_1']);
+assert.deepEqual(parseVRouterVoices('{"voices":[{"name":"missing-id"}]}'), []);
 
 // 1. One-to-one correspondence with the provider page of settingsSchema (the page key has the same name); the llm page is derived from the preset,
 // Synchronize this list when adding other capability pages.
 const EXPECTED_PAGES = [
   ...LLM_PROVIDER_PRESETS.map((preset) => `llm/${preset.id}`),
-  'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus', 'image/xai',
+  'image/openai', 'image/gemini', 'image/minimax', 'image/wavespeed', 'image/byteplus', 'image/xai', 'image/vrouter',
   'voice/elevenlabs', 'voice/openai', 'voice/gemini', 'voice/mistral', 'voice/cartesia',
-  'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify',
-  'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai', 'video/ofox',
+  'voice/doubao', 'voice/minimax', 'voice/inworld', 'voice/fishaudio', 'voice/speechify', 'voice/vrouter',
+  'video/seedance', 'video/kling', 'video/hailuo', 'video/byteplus', 'video/xai', 'video/ofox', 'video/vrouter',
   'music/mureka', 'music/minimax', 'music/atlas', 'music/sonilo',
   'stock/pexels', 'stock/pixabay', 'stock/unsplash', 'stock/freesound',
   'remote-media/webdav', 'remote-media/immich',
   'transcription/assemblyai', 'transcription/openai', 'transcription/mistral',
-  'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia',
+  'transcription/deepgram', 'transcription/groq', 'transcription/elevenlabs', 'transcription/cartesia', 'transcription/vrouter',
   'sandbox/e2b',
   'web/firecrawl',
   'storage/r2', 'storage/local',

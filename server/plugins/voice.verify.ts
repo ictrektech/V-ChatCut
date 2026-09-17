@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { minimaxVoiceBody, minimaxVoiceResult } from './voice-providers.ts';
-import { validateVoiceRequest } from './voice.ts';
+import { applyConfiguredVoice, validateVoiceRequest } from './voice.ts';
 import { generateAiVoice } from './voice-ai-sdk.ts';
 import type { VoiceOptions } from './voice-types.ts';
 
@@ -151,8 +151,14 @@ const aiOptions: VoiceOptions = {
     mistralModel: 'voxtral-mini-tts-2603',
     cartesiaApiKey: 'cartesia-test-key',
     cartesiaModel: 'sonic-3',
+    vrouterBaseUrl: 'http://v-router.test/v1',
+    vrouterApiKey: 'vos-user-token',
+    vrouterModel: 'v-voice/kokoro-multilang',
+    vrouterVoiceId: 'af_heart',
   },
 };
+assert.equal(applyConfiguredVoice({ provider: 'vrouter', text: '你好' }, aiOptions).voiceId, 'af_heart');
+assert.equal(applyConfiguredVoice({ provider: 'vrouter', text: '你好', voiceId: 'af_bella' }, aiOptions).voiceId, 'af_bella');
 const openAiRequest = validateVoiceRequest({
   provider: 'openai',
   text: 'Hello from OpenChatCut',

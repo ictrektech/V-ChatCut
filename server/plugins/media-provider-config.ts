@@ -24,6 +24,7 @@ export function aiVoiceOptions(): AiVoiceOptions {
     get vrouterBaseUrl() { return vRouterApiBaseUrl(); },
     get vrouterApiKey() { return vRouterAccessToken(); },
     get vrouterModel() { return getKey('V_ROUTER_TTS_MODEL'); },
+    get vrouterVoiceId() { return getKey('V_ROUTER_TTS_VOICE_ID'); },
   };
 }
 

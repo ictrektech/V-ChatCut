@@ -35,7 +35,7 @@ Short map of cloud generation tools → providers. Use this when guiding setup o
 | `mistral` | AI SDK speech; configured model defaults to `voxtral-mini-tts-2603`; model/output |
 | `cartesia` | AI SDK speech; configured model defaults to `sonic-3`; model/speed/language/output |
 
-Every provider is opt-in and requires a concrete provider-specific `voiceId`.
+Every provider is opt-in and requires a concrete provider-specific `voiceId`; V-Router may use the default voice saved in Settings.
 Only Doubao, ElevenLabs, and MiniMax have curated choices in the voice skill;
 never invent samples for the other providers. `submit_voice` creates a media-pool
 asset only and does not place it on the timeline.

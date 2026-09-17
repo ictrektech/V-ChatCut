@@ -4,6 +4,7 @@ export interface ProbeResult {
   status?: number;
   latencyMs?: number;
   models?: string[];
+  fieldOptions?: Record<string, string[]>;
 }
 
 export function sanitizeProbeText(text: string): string {

@@ -9,6 +9,12 @@ import { validateVoiceRequest } from './voice-validation.ts';
 
 export { validateVoiceRequest };
 
+export function applyConfiguredVoice(input: VoiceRequest, options: VoiceOptions): VoiceRequest {
+  return input.provider === 'vrouter' && !input.voiceId?.trim()
+    ? { ...input, voiceId: options.ai.vrouterVoiceId }
+    : input;
+}
+
 async function readJson(req: IncomingMessage): Promise<VoiceRequest> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -43,7 +49,8 @@ export function voiceGenerationPlugin(options: VoiceOptions): Plugin {
       server.middlewares.use('/generate/voice', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          const input = validateVoiceRequest(await readJson(req));
+          const raw = await readJson(req);
+          const input = validateVoiceRequest(applyConfiguredVoice(raw, options));
           if (isAiVoiceProvider(input.provider)) {
             const audio = await generateAiVoice(options, input);
             const saved = await saveVoiceAudio(audio.bytes, audio.codec, audio.sampleRate);

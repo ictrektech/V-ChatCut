@@ -21,7 +21,7 @@ import {
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
-import { vRouterHeaders, vRouterModelCatalogUrl } from './v-router-client.ts';
+import { vRouterHeaders, vRouterModelCatalogUrl, vRouterVoicesUrl } from './v-router-client.ts';
 import {
   classifyStatus,
   networkMessage,
@@ -45,6 +45,7 @@ interface ProbeDef {
   readonly okText?: (bodyText: string) => string | null;
   /** Parse a successful model-catalog response. Only LLM provider pages use this. */
   readonly models?: (bodyText: string) => string[];
+  readonly fieldOptions?: (get: Get, bodyText: string) => Promise<Record<string, string[]>>;
 }
 
 const t = (): AbortSignal => AbortSignal.timeout(PROBE_TIMEOUT_MS);
@@ -103,6 +104,15 @@ export function parseModelCatalog(bodyText: string): string[] {
   } catch {
     return [];
   }
+}
+
+export function parseVRouterVoices(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { voices?: Array<{ id?: unknown }> };
+    return [...new Set((body.voices ?? [])
+      .map((voice) => typeof voice.id === 'string' ? voice.id.trim() : '')
+      .filter(Boolean))];
+  } catch { return []; }
 }
 
 /** The provider's error copy is flattened before entering the results: line breaks and truncation are removed. Never splice any key values.*/
@@ -311,6 +321,14 @@ export const PROBES: Record<string, ProbeDef> = {
     needs: [[]],
     run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
     models: (body) => parseVRouterModelCatalog(body, 'audio/speech'),
+    fieldOptions: async (get) => {
+      const model = get('V_ROUTER_TTS_MODEL');
+      if (!model) return {} as Record<string, string[]>;
+      const response = await fetch(vRouterVoicesUrl(model), { signal: t(), headers: vRouterHeaders() });
+      const body = await response.text().catch(() => '');
+      if (!response.ok) throw new Error(classifyStatus(response.status, body).message);
+      return { V_ROUTER_TTS_VOICE_ID: parseVRouterVoices(body) };
+    },
   },
   'image/vrouter': {
     needs: [[]],
@@ -525,6 +543,7 @@ export async function runProbe(page: string, overrides: Record<string, unknown>)
       const vendorError = probe.postCheck?.(bodyText) ?? null;
       if (vendorError) return { ok: false, status: response.status, latencyMs, message: vendorError };
       const models = probe.models?.(bodyText);
+      const fieldOptions = await probe.fieldOptions?.(get, bodyText);
       const modelText = models
         ? models.length > 0 ? ` · 已读取 ${models.length} 个模型` : ' · 接口未返回模型列表'
         : '';
@@ -535,6 +554,7 @@ export async function runProbe(page: string, overrides: Record<string, unknown>)
         latencyMs,
         message: `${okText}${modelText} · ${latencyMs}ms`,
         ...(models ? { models } : {}),
+        ...(fieldOptions ? { fieldOptions } : {}),
       };
     }
     return { ...classifyStatus(response.status, bodyText), latencyMs };

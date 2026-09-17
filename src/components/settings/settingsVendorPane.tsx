@@ -177,7 +177,7 @@ function LocalModelsPane({ page, fields, ctx }: {
 // ── Test connection ───────────────────────────────────────────────────────
 
 interface ProbeRequestResult { body: ProbeResponse; staged: boolean; }
-interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; }
+interface ProbeResponse { ok: boolean; message: string; latencyMs?: number; models?: string[]; fieldOptions?: Record<string, string[]>; }
 interface ProbeShown { page: string; ok: boolean; message: string; }
 
 /** Unsaved temporary values in the fields on this page → detect overrides; the empty string represents the default value for this test. */
@@ -224,6 +224,11 @@ export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx
       if (body.ok && modelField && Array.isArray(body.models)) {
         ctx.onModelsDiscovered(modelField.name, body.models);
       }
+      if (body.ok && body.fieldOptions) {
+        for (const [name, options] of Object.entries(body.fieldOptions)) {
+          if (Array.isArray(options)) ctx.onModelsDiscovered(name, options);
+        }
+      }
     } catch (err) {
       setResult({ page: page.key, ok: false, message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -237,7 +242,8 @@ export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : discoversModels ? t('测试并读取模型') : isProxy ? t('测试代理连接') : t('测试连接')}
+        {busy ? t('测试中…') : page.key === 'voice/vrouter' ? t('测试并读取模型与音色')
+          : discoversModels ? t('测试并读取模型') : isProxy ? t('测试代理连接') : t('测试连接')}
       </button>
       {shown && (
         <span style={{ ...testMsg, color: shown.ok ? ON : WARN }} title={shown.message}>
@@ -345,6 +351,7 @@ function ModelInput({ field, shown, models, reveal, loading, configured, stagedC
   onStage: (field: SettingsField, raw: string) => void;
 }) {
   const t = useT();
+  const choiceLabel = field.name === 'V_ROUTER_TTS_VOICE_ID' ? t('选择音色') : t('选择模型');
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', gap: 7 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -353,8 +360,8 @@ function ModelInput({ field, shown, models, reveal, loading, configured, stagedC
       </div>
       <select
         value=""
-        aria-label={t('选择模型')}
-        title={t('选择模型')}
+        aria-label={choiceLabel}
+        title={choiceLabel}
         disabled={models.length === 0}
         aria-busy={loading === true}
         onChange={(event) => {
@@ -362,7 +369,7 @@ function ModelInput({ field, shown, models, reveal, loading, configured, stagedC
         }}
         style={{ ...select, width: 118, flex: '0 0 118px' }}
       >
-        <option value="">{loading ? t('读取中…') : t('选择模型')}</option>
+        <option value="">{loading ? t('读取中…') : choiceLabel}</option>
         {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
       </select>
     </div>

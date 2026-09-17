@@ -21,6 +21,7 @@ export interface AiVoiceOptions {
   vrouterBaseUrl: string;
   vrouterApiKey: string;
   vrouterModel: string;
+  vrouterVoiceId: string;
 }
 
 export interface VoiceOptions {

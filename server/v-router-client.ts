@@ -25,3 +25,8 @@ export function vRouterApiBaseUrl(): string {
 export function vRouterModelCatalogUrl(): string {
   return `${V_ROUTER_BASE_URL}/api/v1/models`;
 }
+
+export function vRouterVoicesUrl(model: string): string {
+  const params = new URLSearchParams({ model });
+  return `${vRouterApiBaseUrl()}/audio/voices?${params.toString()}`;
+}
