@@ -51,6 +51,12 @@ interface ProbeDef {
 const t = (): AbortSignal => AbortSignal.timeout(PROBE_TIMEOUT_MS);
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
+// V-ChatCut speaks Chat Completions to V-Router. V-Router merges v-voice audio
+// models (ASR/TTS/speaker) into the shared catalog; those only declare audio/*
+// endpoints and would 400 at routing time, so the LLM picker keeps exactly the
+// models /v1/chat/completions accepts (models without endpoints stay listed).
+const VROUTER_CHAT_ENDPOINTS = ['chat_completions'] as const;
+
 function llmProbe(provider: LlmProvider): ProbeDef {
   const names = llmProviderConfigNames(provider);
   const protocol = protocolForProvider(provider);
@@ -60,7 +66,7 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   if (provider === 'vrouter') return {
     needs: [[]],
     run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: parseVRouterModelCatalog,
+    models: (body) => parseVRouterModelCatalog(body, VROUTER_CHAT_ENDPOINTS),
   };
   return {
     needs: isLocal ? [[]] : [[apiKeyName]],
@@ -78,12 +84,13 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   };
 }
 
-export function parseVRouterModelCatalog(bodyText: string, endpoint?: string): string[] {
+export function parseVRouterModelCatalog(bodyText: string, endpoint?: string | readonly string[]): string[] {
   try {
     const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; endpoints?: unknown }> };
+    const wanted = endpoint == null ? null : Array.isArray(endpoint) ? endpoint : [endpoint];
     return [...new Set((body.models ?? []).flatMap((row) => {
       const endpoints = Array.isArray(row.endpoints) ? row.endpoints : [];
-      if (endpoint && endpoints.length && !endpoints.includes(endpoint)) return [];
+      if (wanted && endpoints.length && !wanted.some((one) => endpoints.includes(one))) return [];
       return typeof row.qualified === 'string' && row.qualified.trim() ? [row.qualified.trim()] : [];
     }))].sort((a, b) => a.localeCompare(b));
   } catch { return []; }

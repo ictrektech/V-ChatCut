@@ -18,11 +18,27 @@ delete process.env.OPENCHATCUT_DATA_DIR;
 process.on('exit', () => rmSync(fixtureHome, { recursive: true, force: true }));
 
 const {
-  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, parseVRouterVoices, runProbe, runProxyProbe,
+  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, parseVRouterModelCatalog, parseVRouterVoices, runProbe, runProxyProbe,
 } = await import('./key-probes.ts');
 
 assert.deepEqual(parseVRouterVoices('{"voices":[{"id":"default"},{"id":"speaker_1"},{"id":"default"}]}'), ['default', 'speaker_1']);
 assert.deepEqual(parseVRouterVoices('{"voices":[{"name":"missing-id"}]}'), []);
+
+// V-Router catalog: the LLM picker keeps chat-capable models plus endpoint-less
+// legacy rows; v-voice audio models only match their own capability pages.
+const vRouterCatalog = JSON.stringify({ models: [
+  { qualified: 'qwen3.5', endpoints: ['chat_completions', 'responses'] },
+  { qualified: 'v-voice/qwen3-asr-0.6b', endpoints: ['audio/transcriptions'] },
+  { qualified: 'v-voice/kokoro-multilang', endpoints: ['audio/speech'] },
+  { qualified: 'v-voice/speaker-campplus-zh-en', endpoints: ['audio/speakers', 'audio/speakers/identify', 'audio/speakers/verify'] },
+  { qualified: 'legacy-model' },
+] });
+assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, 'chat_completions'), ['legacy-model', 'qwen3.5']);
+assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, 'audio/transcriptions'), ['legacy-model', 'v-voice/qwen3-asr-0.6b']);
+assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, ['audio/speech', 'audio/transcriptions']),
+  ['legacy-model', 'v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b']);
+assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog), ['legacy-model', 'qwen3.5',
+  'v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b', 'v-voice/speaker-campplus-zh-en']);
 
 // 1. One-to-one correspondence with the provider page of settingsSchema (the page key has the same name); the llm page is derived from the preset,
 // Synchronize this list when adding other capability pages.
