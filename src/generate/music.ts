@@ -5,7 +5,7 @@ export interface SubmitMusicArgs {
   operationId?: string;
   prompt?: string;
   name?: string;
-  provider?: 'mureka' | 'minimax' | 'atlas' | 'sonilo';
+  provider?: 'mureka' | 'minimax' | 'atlas' | 'sonilo' | 'vrouter';
   mode?: 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover' | 'v2m';
   lyrics?: string;
   isInstrumental?: boolean;
@@ -33,6 +33,12 @@ export interface SubmitMusicArgs {
   generateStartMs?: number;
   generateEndMs?: number;
   vocalGender?: 'female' | 'male';
+  duration?: number;
+  negativePrompt?: string;
+  seed?: number;
+  bpm?: number;
+  key?: string;
+  timeSignature?: string;
 }
 
 interface MusicResponse {

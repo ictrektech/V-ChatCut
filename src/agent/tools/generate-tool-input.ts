@@ -184,9 +184,17 @@ const soniloMusic = (args: GenerateArgs): SubmitMusicArgs => ({
   sourceAssetId: str(args.sourceAssetId),
 });
 
-const MUSIC_STRATEGIES = { mureka: murekaMusic, minimax: minimaxMusic, atlas: atlasMusic, sonilo: soniloMusic } as const;
+const vrouterMusic = (args: GenerateArgs): SubmitMusicArgs => ({
+  provider: 'vrouter', mode: 't2m', prompt: str(args.prompt),
+  audioFormat: args.audioFormat as SubmitMusicArgs['audioFormat'], name: str(args.name),
+  isInstrumental: bool(args.isInstrumental), duration: num(args.duration),
+  negativePrompt: str(args.negativePrompt), seed: num(args.seed), bpm: num(args.bpm),
+  key: str(args.key), timeSignature: str(args.timeSignature),
+});
+
+const MUSIC_STRATEGIES = { mureka: murekaMusic, minimax: minimaxMusic, atlas: atlasMusic, sonilo: soniloMusic, vrouter: vrouterMusic } as const;
 export function buildSubmitMusicArgs(args: GenerateArgs): SubmitMusicArgs {
-  const provider = args.provider === 'minimax' || args.provider === 'atlas' || args.provider === 'sonilo' ? args.provider : 'mureka';
+  const provider = args.provider === 'minimax' || args.provider === 'atlas' || args.provider === 'sonilo' || args.provider === 'vrouter' ? args.provider : 'mureka';
   return MUSIC_STRATEGIES[provider](args);
 }
 

@@ -1,4 +1,4 @@
-export type MusicProvider = 'mureka' | 'minimax' | 'atlas' | 'sonilo';
+export type MusicProvider = 'mureka' | 'minimax' | 'atlas' | 'sonilo' | 'vrouter';
 export type MusicMode = 'instrumental' | 'song' | 'prompt-song' | 'soundtrack' | 'track' | 't2m' | 'cover' | 'v2m';
 export type MusicAudioFormat = 'mp3' | 'wav' | 'pcm' | 'flac';
 export type MurekaStyle = 'pop' | 'rock' | 'jazz' | 'r&b' | 'edm' | 'ambient' | 'folk'
@@ -18,6 +18,9 @@ export interface MusicOptions {
   atlasModel: string;
   soniloBaseUrl: string;
   soniloApiKey: string;
+  vrouterBaseUrl: string;
+  vrouterApiKey: string;
+  vrouterModel: string;
 }
 
 export interface MusicRequest {
@@ -52,6 +55,12 @@ export interface MusicRequest {
   generateStartMs?: number;
   generateEndMs?: number;
   vocalGender?: 'female' | 'male';
+  duration?: number;
+  negativePrompt?: string;
+  seed?: number;
+  bpm?: number;
+  key?: string;
+  timeSignature?: string;
 }
 
 export interface ValidMusicRequest extends MusicRequest {

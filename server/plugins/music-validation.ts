@@ -117,9 +117,23 @@ function validateAtlas(input: MusicRequest, mode: MusicMode, prompt: string, lyr
   if (input.audioFormat && !['mp3', 'wav', 'pcm'].includes(input.audioFormat)) throw new Error('Atlas audioFormat must be mp3, wav, or pcm');
 }
 
+function validateVRouter(input: MusicRequest, mode: MusicMode, prompt: string, lyrics?: string): void {
+  if (mode !== 't2m') throw new Error('vrouter mode must be t2m');
+  rejectMurekaOnly(input);
+  if (!prompt || prompt.length > 4000) throw new Error('V-Router music prompt is required and must be at most 4000 characters');
+  if (lyrics) throw new Error('V-Router music does not accept lyrics');
+  if (input.referenceAudioPath || input.coverFeatureId || input.lyricsOptimizer !== undefined
+    || input.sampleRate !== undefined || input.bitrate !== undefined) throw new Error('MiniMax-only controls are not supported by V-Router music');
+  if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration < 10)) throw new Error('V-Router music duration must be at least 10 seconds');
+  if (input.negativePrompt !== undefined && input.negativePrompt.length > 4000) throw new Error('V-Router music negativePrompt must be at most 4000 characters');
+  if (input.seed !== undefined && !Number.isInteger(input.seed)) throw new Error('V-Router music seed must be an integer');
+  if (input.bpm !== undefined && (!Number.isInteger(input.bpm) || input.bpm < 20 || input.bpm > 300)) throw new Error('V-Router music bpm must be an integer from 20 to 300');
+  if (input.audioFormat && input.audioFormat !== 'wav' && input.audioFormat !== 'flac') throw new Error('V-Router music audioFormat must be wav or flac');
+}
+
 export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
   const provider = String(input.provider ?? 'mureka');
-  if (provider !== 'mureka' && provider !== 'minimax' && provider !== 'atlas' && provider !== 'sonilo') throw new Error('provider must be mureka, minimax, atlas, or sonilo');
+  if (provider !== 'mureka' && provider !== 'minimax' && provider !== 'atlas' && provider !== 'sonilo' && provider !== 'vrouter') throw new Error('provider must be mureka, minimax, atlas, sonilo, or vrouter');
   const inferredMode: MusicMode = provider === 'mureka' ? 'instrumental'
     : provider === 'sonilo' ? 'v2m'
       : provider === 'minimax' && (input.referenceAudioPath || input.coverFeatureId) ? 'cover' : 't2m';
@@ -136,19 +150,20 @@ export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {
     if (input.audioFormat && !['mp3', 'wav', 'flac'].includes(input.audioFormat)) throw new Error('Mureka audioFormat must be mp3, wav, or flac');
     validateMurekaMode(input, mode, prompt, lyrics);
   } else if (provider === 'minimax') validateMinimax(input, mode, prompt, lyrics);
+  else if (provider === 'vrouter') validateVRouter(input, mode, prompt, lyrics);
   else validateAtlas(input, mode, prompt, lyrics);
   const name = optionalText(input.name) ?? `Music · ${(prompt || mode).slice(0, 36)}`;
   return {
     ...input, provider, mode, prompt, lyrics, name,
     isInstrumental: provider === 'mureka'
       ? mode === 'instrumental'
-      : provider === 'sonilo'
-        ? true
+      : provider === 'sonilo' || provider === 'vrouter'
+        ? input.isInstrumental ?? true
         : input.isInstrumental ?? (mode === 't2m' && !lyrics && !input.lyricsOptimizer),
     lyricsOptimizer: provider === 'minimax' && input.lyricsOptimizer === true,
     sampleRate: input.sampleRate ?? 44_100,
     bitrate: input.bitrate ?? 256_000,
-    audioFormat: input.audioFormat ?? 'mp3',
+    audioFormat: input.audioFormat ?? (provider === 'vrouter' ? 'wav' : 'mp3'),
     count: input.count ?? 1,
     stream: input.stream === true,
     coverMode: mode === 'cover',

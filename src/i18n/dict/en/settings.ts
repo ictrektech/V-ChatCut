@@ -14,6 +14,8 @@ export default {
   '测试连接后选择声明 images/generations 的模型。': 'Test the connection, then select a model that declares images/generations.',
   '测试连接后选择声明 audio/speech 的模型。': 'Test the connection, then select a model that declares audio/speech.',
   '测试连接后选择声明 videos/generations 的模型。': 'Test the connection, then select a model that declares videos/generations.',
+  '使用当前 VOS 登录账户鉴权，通过 V-Router 调用已安装的 V-Music。生成时可设置时长、负面提示词、随机种子、BPM、调性、拍号及 WAV/FLAC 格式。': 'Authenticate with the current VOS account and use the installed V-Music through V-Router. Generation supports duration, negative prompt, seed, BPM, key, time signature, and WAV/FLAC output.',
+  '测试连接后选择声明 audio/music/generations 的模型。': 'Test the connection, then select a model that declares audio/music/generations.',
   '点击测试连接后选择 V-Router 返回的模型。': 'Test the connection, then select a model returned by V-Router.',
   'Immich 地址': 'Immich URL',
   'WebDAV 地址': 'WebDAV URL',

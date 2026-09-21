@@ -225,7 +225,7 @@ export function computeCaps(): Caps {
       has("BYTEPLUS_API_KEY") ||
       has("LLM_OFOX_API_KEY") ||
       has("V_ROUTER_VIDEO_MODEL"),
-    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY"),
+    music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY") || has("V_ROUTER_MUSIC_MODEL"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:
       has("PEXELS_API_KEY") ||

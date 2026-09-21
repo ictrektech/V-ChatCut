@@ -155,6 +155,17 @@ assert.equal(soniloMusic.stream, undefined, 'sonilo must not receive Mureka stre
 assert.equal(soniloMusic.bitrate, undefined, 'sonilo must not receive MiniMax audio settings');
 assert.equal(soniloMusic.audioFormat, undefined, 'sonilo output format is fixed');
 
+const vrouterMusic = buildSubmitMusicArgs({
+  provider: 'vrouter', prompt: 'cinematic pulse', duration: 42, negativePrompt: 'vocals',
+  seed: 7, bpm: 108, key: 'D minor', timeSignature: '4/4', audioFormat: 'flac',
+  lyrics: 'drop me', count: 3,
+});
+assert.deepEqual(vrouterMusic, {
+  provider: 'vrouter', mode: 't2m', prompt: 'cinematic pulse',
+  audioFormat: 'flac', name: undefined, isInstrumental: undefined, duration: 42,
+  negativePrompt: 'vocals', seed: 7, bpm: 108, key: 'D minor', timeSignature: '4/4',
+});
+
 const elevenSound = buildSubmitSoundArgs({
   prompt: 'thunder', durationSeconds: 4, promptInfluence: 0.5, loop: true, sourceAssetId: 'cut-1',
 });

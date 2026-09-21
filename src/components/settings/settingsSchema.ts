@@ -175,6 +175,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'minimax', label: 'MiniMax' },
           { value: 'atlas', label: 'Atlas Cloud' },
           { value: 'sonilo', label: 'Sonilo' },
+          { value: 'vrouter', label: 'V-Router' },
         ]),
         vendors: [
           { key: 'music/mureka', vendor: 'mureka', title: 'Mureka', fields: [
@@ -196,6 +197,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               secret('SONILO_API_KEY', 'API Key'),
               text('SONILO_BASE_URL', 'Base URL', '默认 https://api.sonilo.com'),
+            ] },
+          { key: 'music/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权，通过 V-Router 调用已安装的 V-Music。生成时可设置时长、负面提示词、随机种子、BPM、调性、拍号及 WAV/FLAC 格式。',
+            fields: [
+              modelText('V_ROUTER_MUSIC_MODEL', '音乐模型', '从 V-Router 选择',
+                '测试连接后选择声明 audio/music/generations 的模型。', true),
             ] },
         ] },
     ],

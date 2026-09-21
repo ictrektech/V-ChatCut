@@ -131,6 +131,17 @@ const atlas = validateMusicRequest({
 });
 assert.equal(atlas.mode, 't2m');
 assert.equal(atlas.isInstrumental, false);
+
+const vrouter = validateMusicRequest({
+  provider: 'vrouter', prompt: 'Warm ambient documentary underscore', duration: 42,
+  negativePrompt: 'vocals', seed: 7, bpm: 96, key: 'D minor', timeSignature: '4/4', audioFormat: 'flac',
+});
+assert.equal(vrouter.mode, 't2m');
+assert.equal(vrouter.isInstrumental, true);
+assert.equal(vrouter.audioFormat, 'flac');
+assert.equal(vrouter.duration, 42);
+assert.throws(() => validateMusicRequest({ provider: 'vrouter', prompt: 'x', duration: 9 }), /at least 10/);
+assert.throws(() => validateMusicRequest({ provider: 'vrouter', prompt: 'x', audioFormat: 'mp3' }), /wav or flac/);
 assert.deepEqual(atlasRequestBody(atlas, 'minimax/music-2.6'), {
   model: 'minimax/music-2.6',
   prompt: 'Warm documentary underscore',

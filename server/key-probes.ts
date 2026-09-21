@@ -436,6 +436,11 @@ export const PROBES: Record<string, ProbeDef> = {
   },
   'music/minimax': minimaxProbe,
   'music/atlas': atlasMusicProbe,
+  'music/vrouter': {
+    needs: [[]],
+    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
+    models: (body) => parseVRouterModelCatalog(body, 'audio/music/generations'),
+  },
   // Read-only account endpoint; fake key → 401. The same key also serves
   // /generate/sound (video-to-SFX), so one probe covers both capabilities.
   'music/sonilo': {

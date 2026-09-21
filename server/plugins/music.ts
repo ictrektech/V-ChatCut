@@ -11,7 +11,7 @@ import {
   type RegisterGenerationDownload,
   type RegisterGenerationProviderTask,
 } from './generation-jobs.ts';
-import { saveAudioResponse } from './music-media.ts';
+import { musicProviderError, saveAudioResponse } from './music-media.ts';
 import { generateAtlasMusic } from './music-atlas.ts';
 import { generateMureka, pickMurekaAudioUrl } from './music-mureka.ts';
 import { isMinimaxCoverModel, minimaxMusicUrl } from './music-minimax.ts';
@@ -71,6 +71,21 @@ async function runMusicOperation(
   providerTaskId?: string,
   storedResultUrls: readonly string[] = [],
 ): Promise<GenerationResult | GenerationResult[]> {
+  if (input.provider === 'vrouter') {
+    const response = await fetch(`${options.vrouterBaseUrl.replace(/\/+$/, '')}/audio/music/generations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${options.vrouterApiKey}` },
+      body: JSON.stringify({
+        model: options.vrouterModel, prompt: input.prompt, duration: input.duration ?? 30,
+        negative_prompt: input.negativePrompt ?? '', seed: input.seed, bpm: input.bpm,
+        key: input.key ?? '', time_signature: input.timeSignature ?? '',
+        instrumental: input.isInstrumental, response_format: input.audioFormat,
+      }),
+    });
+    if (!response.ok) throw new Error(await musicProviderError(response));
+    const saved = await saveAudioResponse(response, input.audioFormat);
+    return { assetId: operationId, kind: 'audio', name: input.name, ...saved };
+  }
   const expectedResultCount = expectedMusicResultCount(input);
   const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
   let urls = checkpoint.urls;
@@ -118,7 +133,7 @@ async function runMusicOperation(
 }
 
 export function musicGenerationPlugin(options: MusicOptions): Plugin {
-  for (const provider of ['mureka', 'minimax', 'atlas', 'sonilo'] as const) {
+  for (const provider of ['mureka', 'minimax', 'atlas', 'sonilo', 'vrouter'] as const) {
     registerGenerationJobResumer('submit_music', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
@@ -154,10 +169,14 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
           if (input.provider === 'sonilo' && !options.soniloApiKey) {
             throw new Error('Sonilo is not configured. Set SONILO_API_KEY in .env.local or 设置面板.');
           }
+          if (input.provider === 'vrouter' && (!options.vrouterApiKey || !options.vrouterModel)) {
+            throw new Error('V-Router music is not configured. Sign in to VOS and select a V-Router music model in 设置.');
+          }
           // Sonilo has no client-selected model: /v1 routes to the latest server-side.
           const model = input.provider === 'minimax' ? options.minimaxModel
             : input.provider === 'atlas' ? options.atlasModel
               : input.provider === 'sonilo' ? 'v1'
+                : input.provider === 'vrouter' ? options.vrouterModel
                 : options.model;
           const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
           const submission = await createGenerationJob(

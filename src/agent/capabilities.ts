@@ -93,6 +93,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
     { label: 'Atlas Cloud', arg: 'atlas', argKey: 'provider', need: [['ATLASCLOUD_API_KEY']] },
     { label: 'Sonilo', arg: 'sonilo', argKey: 'provider', need: [['SONILO_API_KEY']] },
+    { label: 'V-Router', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_MUSIC_MODEL']] },
   ],
   sound: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },

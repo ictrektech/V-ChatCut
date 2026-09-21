@@ -109,12 +109,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_music',
-    description: 'Submit a Mureka, MiniMax, Atlas Cloud, or Sonilo music job. Mureka supports instrumental, lyrics song, prompt song, soundtrack, and track/stem modes with up to 3 results. MiniMax supports text-to-music and cover. Atlas Cloud supports text-to-music through its asynchronous audio API. Sonilo v2m generates music from a project video asset (the rendered cut, up to 6 minutes) — video-conditioned, with a single optional style prompt. Results are saved to the media pool.',
+    description: 'Submit a Mureka, MiniMax, Atlas Cloud, Sonilo, or V-Router music job. V-Router uses the selected V-Music model for text-to-music and passes generation errors through. Results are saved to the media pool.',
     input_schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', maxLength: 2000, description: 'Style/control prompt. Required for most modes; optional with Mureka provider IDs and Sonilo v2m (≤500, works promptless). Mureka max is 1024 or 2000 by mode; MiniMax cover requires 10–300.' },
-        provider: { type: 'string', enum: ['mureka', 'minimax', 'atlas', 'sonilo'], description: 'Defaults to mureka.' },
+        prompt: { type: 'string', maxLength: 4000, description: 'Style/control prompt. V-Router/V-Music accepts up to 4000 characters; other provider-specific limits are validated.' },
+        provider: { type: 'string', enum: ['mureka', 'minimax', 'atlas', 'sonilo', 'vrouter'], description: 'Defaults to mureka.' },
         mode: { type: 'string', enum: ['instrumental', 'song', 'prompt-song', 'soundtrack', 'track', 't2m', 'cover', 'v2m'], description: 'Mureka: instrumental/song/prompt-song/soundtrack/track. MiniMax: t2m/cover. Atlas Cloud: t2m. Sonilo: v2m (video-to-music).' },
         lyrics: { type: 'string', maxLength: 5000, description: 'Mureka song/track or MiniMax t2m/cover lyrics. Provider-specific limits are validated.' },
         isInstrumental: { type: 'boolean', description: 'MiniMax or Atlas Cloud t2m only. Force instrumental.' },
@@ -122,6 +122,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         sampleRate: { type: 'integer', description: 'MiniMax or Atlas Cloud only. One of 16000/24000/32000/44100; default 44100.' },
         bitrate: { type: 'integer', description: 'MiniMax or Atlas Cloud only. One of 32000/64000/128000/256000; default 256000.' },
         audioFormat: { type: 'string', enum: ['mp3', 'wav', 'pcm', 'flac'], description: 'MiniMax/Atlas Cloud: mp3/wav/pcm. Mureka: mp3/wav/flac. Default mp3.' },
+        duration: { type: 'number', minimum: 10, description: 'V-Router/V-Music only. Duration in seconds; defaults to 30 and is capped by the selected model/service.' },
+        negativePrompt: { type: 'string', maxLength: 4000, description: 'V-Router/V-Music only. Content to avoid.' },
+        seed: { type: 'integer', description: 'V-Router/V-Music only. Reproducibility seed.' },
+        bpm: { type: 'integer', minimum: 20, maximum: 300, description: 'V-Router/V-Music only. Target tempo.' },
+        key: { type: 'string', description: 'V-Router/V-Music only. Musical key, when supported by the selected model.' },
+        timeSignature: { type: 'string', description: 'V-Router/V-Music only. Meter such as 4/4, when supported by the selected model.' },
         referenceAssetId: { type: 'string', description: 'MiniMax cover only. Project audio asset id; mutually exclusive with coverFeatureId.' },
         coverFeatureId: { type: 'string', description: 'MiniMax cover only. Preprocessed feature ID; requires lyrics and excludes referenceAssetId.' },
         count: { type: 'integer', minimum: 1, maximum: 3, description: 'Mureka only. Result count; defaults to 1 (official API default is 2).' },
