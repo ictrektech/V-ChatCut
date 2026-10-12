@@ -47,7 +47,7 @@ jobs:
 
       - name: Build pull-mode package
         env:
-          FEISHU_SPREADSHEET_TOKEN: ${{ secrets.FEISHU_SPREADSHEET_TOKEN }}
+          FEISHU_SPREADSHEET_TOKEN: Htotsn3oahO1zxt73YMcaB1zn8e
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#vos-v-chatcut-v}"
