@@ -16,15 +16,21 @@ import { verifyOfflineCommitAndProjectionScenarios } from './offline-runtime-saf
 
 const toolNames = new Set(offlineExternalToolSchemas().map((schema) => schema.name));
 
-for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline']) {
+for (const allowed of ['begin_edit_session', 'read_timeline', 'read_project', 'read_transcript', 'read_captions', 'read_agent_artifact', 'set_aspect_ratio', 'edit_captions', 'update_watermark', 'import_timeline', 'edit_item', 'manage_effects', 'list_templates', 'search_templates', 'list_audio', 'browse_library', 'add_motion_graphic', 'add_audio', 'import_asset', 'import_assets', 'import_folder', 'browse_local_media', 'export_jianying_draft']) {
   assert.equal(toolNames.has(allowed), true, `${allowed} is server-direct`);
 }
+// edit_item / manage_effects / the catalog tools moved into the server-direct set
+// once their GL catalogs became loadable outside Vite (the generated *.frag.ts
+// twins) and the offline editor context started carrying the bundled template and
+// audio catalogs. The tools below remain browser-bound.
 for (const excluded of [
   'list_edit_sessions',
   'recover_edit_session',
-  'edit_item',
-  'manage_effects',
   'view_timeline_frames',
+  'view_asset_frames',
+  'place_graphics_in_safe_zone',
+  'auto_reframe',
+  'create_motion_graphic_from_code',
   'submit_image',
   'import_media',
   'download_media',
@@ -61,6 +67,13 @@ assert.equal(persistence.commitCount, 0);
 
 const begun = await runtime.execute('begin_edit_session', { approvalMode: 'auto', clientName: 'External editor' });
 const sessionId = editSessionId(begun);
+await assert.rejects(
+  () => runtime.execute('begin_edit_session', { approvalMode: 'auto' }),
+  /Resolve or discard active edit session/,
+  'offline active conflict rejects when reuseExisting is not set',
+);
+const adoptedOffline = await runtime.execute('begin_edit_session', { approvalMode: 'auto', reuseExisting: true });
+assert.equal(editSessionId(adoptedOffline), sessionId, 'offline begin_edit_session with reuseExisting: true adopts active session');
 for (const action of ['preset_apply', 'preset_delete', 'preset_list', 'preset_rename', 'preset_save']) {
   await assert.rejects(
     () => runtime.execute('edit_captions', { editSessionId: sessionId, action }),

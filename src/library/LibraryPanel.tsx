@@ -24,7 +24,8 @@ import { FxThumb } from './FxThumb';
 import { ZoomThumb } from './ZoomThumb';
 import { SoundBrowser } from './SoundBrowser';
 import { EnvelopeThumb } from './PluginBrowser';
-import { asPluginZoom, pluginResourceItems, usePluginPacks } from './pluginResources';
+import { asPluginZoom } from './pluginTemplateCatalog';
+import { pluginResourceItems, usePluginPacks } from './pluginResources';
 import { ExtensionCenter } from './ExtensionCenter';
 import { isPluginAssetId } from '../plugins/types';
 import { customTransitionUniforms, getCustomTransition } from '../gl/customTransitions';
@@ -86,7 +87,7 @@ interface LibraryPanelProps {
     },
   ) => Promise<MediaAsset>;
   onImportMobileMedia: (record: MobileUploadRecord) => Promise<void>;
-  onIngestDirectoryAsset: (asset: MediaAsset) => void;
+  onIngestDirectoryAsset: (asset: MediaAsset, durationFps?: number) => void;
   onTranscribeAsset: (asset: MediaAsset) => void;
   onAddMediaItem: (asset: MediaAsset) => void;
   onAddMediaAssetsToTimeline: (assets: MediaAsset[]) => void;

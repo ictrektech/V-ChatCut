@@ -39,6 +39,7 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
+  <a href="https://atomgit.com/Oxsline/openchatcut"><img alt="AtomGit G-Star" src="https://img.shields.io/badge/AtomGit-G--Star-DA203E?logo=gitcode&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -196,6 +197,7 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 | AI 生成 | 图片、视频、语音、音乐和音效任务，支持进度追踪 |
 | 素材 | 上传、文件夹、在线图片/视频/音频检索、Firecrawl 视觉素材兜底 |
 | 导出 | MP4、音频、字幕、FCPXML、工程导入导出、导出历史、硬件感知的 H.264 加速和资源感知的导出排队 |
+| 发布 | Agent 通过 Upload-Post 把成片发布到 TikTok、Instagram、YouTube、LinkedIn、Facebook、X、Threads、Pinterest、Bluesky，先预览、确认后才上传 |
 | Agent | 内置对话 Agent、技能系统、提案式编辑、外部 Streamable HTTP MCP |
 
 ---
@@ -257,6 +259,8 @@ OpenChatCut 是 **开源 ChatCut 替代方案**：把 **对话式 Agent** 和 **
 
 需要 Node.js 24.x 和 npm。`package.json` 会约束支持的 Node.js 范围，`.nvmrc` 可供 Node 版本管理器直接选择对应主版本。
 
+在 Linux x64 上，`npm install` 还会从 NuGet 下载 ONNX Runtime 可选的 CUDA 组件（数百 MB）。只需 CPU 推理时，可改用 `ONNXRUNTIME_NODE_INSTALL=skip npm install`。
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +275,8 @@ npm run dev
 http://localhost:5199
 ```
 
+编辑器需要浏览器的[安全上下文](https://developer.mozilla.org/zh-CN/docs/Web/Security/Defenses/Secure_Contexts)：请在运行 OpenChatCut 的电脑上通过 `http://localhost` 或 `http://127.0.0.1` 访问，或通过 HTTPS 提供服务。从其他设备以普通 HTTP 访问（局域网 IP 或反向代理）时，浏览器会禁用 Web Crypto、WebCodecs 和剪贴板，工程列表仍可打开，但编辑器会显示这一要求而不会进入。
+
 `.env.local` 中只需填写你实际使用的模型或素材服务。没有配置的第三方能力会明确提示缺少对应 Key，不影响本地时间线编辑、内置素材和已配置的其他能力。
 
 开发启动默认按 Git checkout/worktree 隔离。`npm run dev` 与 `npm run desktop:dev`
@@ -282,7 +288,7 @@ http://localhost:5199
 
 - **API Key**：打开**设置 → Agent 模型**，选择厂商并保存 API Key 与模型；密钥始终留在服务端。
 - **ChatGPT 订阅**：先安装官方 Codex CLI 0.146.0 或更高版本，再进入**设置 → Agent 模型 → OpenAI · Codex**。可使用浏览器或设备代码登录、读取账号可用模型，并按模型选择推理强度（或保留模型默认值），再在聊天区的模型选择器中切换到 Codex。OpenChatCut 使用独立的 Codex 配置目录；凭据存储、令牌续期与退出均由官方 CLI 负责，OAuth 令牌不会暴露给浏览器。
-- **Claude 订阅**：OpenChatCut 不接收 Claude OAuth 凭据；请通过下文的本机 MCP 连接使用 Claude Code。内置 Agent 仍可通过 Anthropic API Key 使用 Claude。
+- **Claude 订阅**：本机安装 Claude Code CLI 后，可在「设置 → Agent 大脑 → Anthropic · Claude Code」使用 CLI 的订阅登录状态，凭据由 CLI 管理。外部 Claude Code 会话仍可通过下文的 MCP 连接使用；Anthropic API Key 接入继续可用。
 
 内置 Agent 的模型循环始终在本机服务端运行。聊天、草稿和提案可跨页面刷新和本地服务重启保留。时间线修改仍通过活动编辑器中经过校验且可撤销的命令完成。
 
@@ -305,9 +311,11 @@ npm run desktop:dev
 
 ### VOS 集成
 
-VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个互斥 profile，安装时必须选择一个。VOS 根据宿主机 caps 中的架构、CUDA 和 `device-type` 判断可用 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
+VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个互斥 profile，安装时必须选择一个。VOS 根据宿主机 caps 中的架构、CUDA 和 `device-type` 判断可用 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。智能分析和抽帧也只有在实际设备探测成功后才启用硬解，CPU profile 可正常使用声明了 VA-API 的系统 FFmpeg。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
 
-VOS 用户可在 Agent、视觉、图片、视频、配音和字幕转写设置中选择 V-Router。V-ChatCut 使用当前登录账户读取模型目录，并按功能所需 endpoint 筛选模型；视频生成对应 `videos/generations`，Agent 列表只保留可走 `/v1/chat/completions` 的模型，V-Router 并入的 v-voice 音频模型不会出现在对话模型里。配音设置会在选定 TTS 模型后读取 `/v1/audio/voices` 的可用音色，并保存默认音色供 Agent 与生成请求使用。API Key、上游地址和模型管理均留在 V-Router，V-ChatCut 只保存用户选中的模型名和音色 ID。
+VOS 用户可在 Agent、视觉、图片、视频、配音、字幕转写和音乐生成设置中选择 V-Router。V-ChatCut 使用当前登录账户读取模型目录，并按功能所需 endpoint 筛选模型；视频生成对应 `videos/generations`，Agent 列表只保留可走 `/v1/chat/completions` 的模型，V-Router 并入的 v-voice 音频模型不会出现在对话模型里。配音设置会在选定 TTS 模型后读取 `/v1/audio/voices` 的可用音色，并保存默认音色供 Agent 与生成请求使用。音乐生成通过 `audio/music/generations` 调用 V-Music，支持时长、负面提示词、随机种子、BPM、调性、拍号、纯音乐及 WAV/FLAC 输出，上游错误会显示在生成任务中。API Key、上游地址和模型管理均留在 V-Router，V-ChatCut 只保存用户选中的模型名和音色 ID。
+
+工程存储使用 SQLite 作为唯一后端，首次使用时按 VOS 用户导入旧 JSON，原文件保留为备份。导入失败会阻止存储操作并在下次访问时重试；`OPENCHATCUT_SQLITE_STORE` 不再切换存储后端。
 
 VOS 包启用 OIDC Fastpath 用户验证，并按 OIDC `sub` 隔离服务端工程、媒体、任务、连接凭证及浏览器存储。数据目录为 `/data/users/<subject-hash>/`。VOS exposed 是应用级视图，默认不作为多用户素材来源；仅公共素材库可由管理员显式开启。旧共享数据只能由 VOS 管理员通过 `POST /api/auth/claim-legacy-data` 主动认领，且不会自动暴露给其他用户。
 
@@ -388,6 +396,48 @@ claude mcp add --transport http openchatcut \
 
 外部 Agent 调用的仍是编辑器内部同一套工具和 `EditorCore` 命令，不存在两套互相漂移的工程格式；外部草稿准备期间不会修改正式时间线。
 
+### Qoder
+
+Qoder 同样支持一键接入：指南里的「连接」按钮会把端点和 Bearer 令牌写进 Qoder
+自己的设置文件，已有的其它设置和 MCP 服务保持不变。
+
+```text
+~/.qoder/settings.json        （国际版）
+~/.qoder-cn/settings.json     （国内版；已安装时一并写入）
+```
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <令牌>" }
+    }
+  }
+}
+```
+
+写入后重启 Qoder 生效。
+
+### 千问办公
+
+千问办公 的自定义 MCP 保存在应用内部的连接器里，没有可供写入的配置文件，
+因此这一步无法一键完成：在指南中点「千问办公」卡片的「复制配置」，再到
+千问办公 的 连接器 → 自定义 MCP → 添加 中粘贴并保存：
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "streamable-http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <令牌>" }
+    }
+  }
+}
+```
+
 ### MCP 访问保护
 
 自行暴露 MCP 入口时可配置：
@@ -415,7 +465,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox 与兼容接口）、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox、Requesty、Cheaper Inference 与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |
@@ -461,6 +511,12 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 
 ---
 
+### Fal.ai 图像与视频生成
+
+Fal.ai 是可选的生成服务，提供明确的图像与视频模型目录。
+在 **设置 → AI 生成 → 生图或生视频 → Fal.ai** 中配置。
+支持的模型、服务端密钥配置、免费验证和扩展方式见 [Fal.ai 使用指南](FAL.md)。
+
 ## 开发与验证
 
 ```bash
@@ -496,6 +552,8 @@ OpenChatCut 基于以下核心项目与规范构建：
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Codex、Claude Code 等外部 Agent 访问工程与时间线工具的协议基础。 |
 | [Vercel AI SDK](https://ai-sdk.dev/) | 内置 Agent 的多厂商模型流式响应与工具调用基础。 |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | README 运行时架构图的定义、校验与 SVG 生成工具。 |
+
+剪映 / CapCut 草稿导出由 [capcut-cli](https://github.com/renezander030/capcut-cli) 提供支持。
 
 这里列出的是项目的主要技术基础，不替代各依赖、字体和内置二进制随附的许可证。完整 JavaScript 依赖版本见 `package-lock.json`，字体授权见 [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md)。
 

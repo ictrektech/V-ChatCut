@@ -15,7 +15,8 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
     note: preset.id === 'vrouter'
       ? '使用当前 VOS 登录账户读取 V-Router 中可见的 public 模型和本账户 private 模型；无需在 V-ChatCut 保存 API Key 或上游地址。'
       : preset.id === 'anthropic'
-      ? '内置 Agent 需要 Anthropic API Key。Claude Code 订阅用户请通过「外部 Agent 接入 (MCP)」连接；OpenChatCut 不接收 Claude OAuth。'
+      ? '内置 Agent 可使用 Anthropic API Key，也可以在下方「Anthropic · Claude Code」页用 Claude 订阅登录（无需 API Key）。'
+        + '独立运行的 Claude Code 会话也可以通过「外部 Agent 接入 (MCP)」驱动 OpenChatCut。'
       : preset.id === 'ictrek'
         ? '请先前往 ai.ictrek.com 注册账户并申请 API Token，再将 Token 填入下方 API Key，测试连接并选择可用模型。'
         : '每个厂商独立保存地址、密钥与模型。先测试连接，成功后可从接口返回的模型中选择。',
@@ -99,6 +100,22 @@ const COPILOT_PAGE: SettingsVendorPage = {
   ],
 };
 
+const CLAUDE_CODE_PAGE: SettingsVendorPage = {
+  key: 'llm/claude-code',
+  vendor: 'anthropic',
+  title: 'Anthropic · Claude Code',
+  connection: 'claude-code',
+  note: '使用 Claude 订阅登录，由官方 Claude Code CLI 管理凭据、续期与退出，OpenChatCut 不会读取或显示 OAuth 凭据。'
+    + '在终端运行 claude auth login（或 claude setup-token 获取长期令牌）完成登录后，点击“重新检测”。',
+  fields: [
+    {
+      name: 'CLAUDE_CODE_MODEL', label: 'Claude Code 模型', kind: 'text',
+      defaultLabel: 'Claude Code 默认模型', discoverableModel: true,
+      note: '登录后可从可用模型中选择，也可以手动填写别名（如 sonnet / opus / haiku）。',
+    },
+  ],
+};
+
 const XAI_OAUTH_PAGE: SettingsVendorPage = {
   key: 'llm/xai-oauth', vendor: 'xai-oauth', title: 'xAI · Grok (订阅登录)',
   connection: 'xai-oauth',
@@ -118,6 +135,7 @@ const AGENT_VENDOR_PAGES: readonly SettingsVendorPage[] = LLM_PROVIDER_PRESETS.f
   if (preset.id === 'xai-oauth') return [XAI_OAUTH_PAGE];
   if (preset.id === 'ofox') return [];
   const page = llmPage(preset);
+  if (preset.id === 'anthropic') return [page, CLAUDE_CODE_PAGE];
   if (preset.id !== 'openai') return [page];
   return OFOX_PRESET
     ? [page, CODEX_PAGE, llmPage(OFOX_PRESET), COPILOT_PAGE]

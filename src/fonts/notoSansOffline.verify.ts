@@ -58,7 +58,9 @@ assert.ok(address && typeof address !== 'string');
 
 let browser: HeadlessBrowser | undefined;
 try {
-  browser = await openBrowser('chrome', { logLevel: 'error' });
+  browser = await openBrowser('chrome', {
+    logLevel: 'error', browserExecutable: process.env.CC_BROWSER_EXECUTABLE,
+  });
   const page = await browser.newPage({
     context: () => null,
     logLevel: 'error',

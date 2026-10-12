@@ -665,7 +665,7 @@
     },
     {
       "name": "manage_transcript",
-      "description": "Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Eight actions:\n- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as \"A\" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.\n- set_play_order: reorder spoken playback via playOrder word-index array (same as dragging speech blocks in the Transcript panel). Pass playOrder:null or clearPlayOrder:true to restore chronological order. Retimes the clip.\n- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing.\n- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n- translation_list: list the source transcript and all translation variants with id/lang/word count.\n- translation_read: read words from a translation variant selected by lang or targetLanguage.\nTranslation variants contain translated text only. To display a language in captions, use edit_captions language_mode.",
+      "description": "Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Eight actions:\n- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as \"A\" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.\n- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.\n- set_play_order: reorder spoken playback via playOrder word-index array (same as dragging speech blocks in the Transcript panel). Pass playOrder:null or clearPlayOrder:true to restore chronological order. Retimes the clip.\n- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing. Accepts the same optional provider override as transcribe_track.\n- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.\n- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.\n- translation_list: list the source transcript and all translation variants with id/lang/word count.\n- translation_read: read words from a translation variant selected by lang or targetLanguage.\nTranslation variants contain translated text only. To display a language in captions, use edit_captions language_mode.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -690,6 +690,20 @@
           "track": {
             "type": "string",
             "description": "When itemId is omitted, locate by track alias or stable id; default A1."
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "assemblyai",
+              "local",
+              "openai",
+              "mistral",
+              "deepgram",
+              "groq",
+              "elevenlabs",
+              "cartesia"
+            ],
+            "description": "retry_transcription: optional configured provider override, same values as transcribe_track. Omit to use the provider selected in Settings."
           },
           "wordIndex": {
             "type": "number",
@@ -1148,7 +1162,7 @@
     },
     {
       "name": "submit_image",
-      "description": "Generate one or more AI images (gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
+      "description": "Generate one or more AI images (Fal catalog, gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1161,9 +1175,25 @@
               "wavespeed",
               "byteplus",
               "grok-imagine",
-              "vrouter"
+              "vrouter",
+              "fal"
             ],
-            "description": "gpt-image-2 is the default; vrouter uses the image model selected from the current VOS account V-Router catalog."
+            "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+          },
+          "falModel": {
+            "type": "string",
+            "enum": [
+              "nano-banana-2",
+              "nano-banana-pro",
+              "gpt-image-2",
+              "flux-2",
+              "flux-2-pro",
+              "seedream-5-pro",
+              "ideogram-4",
+              "qwen-image-3",
+              "recraft-v3"
+            ],
+            "description": "With model=fal, select a curated Fal image model; omitted uses the saved Fal image default. nano-banana-2: Nano Banana 2 — count 1–4, resolutions 0.5K/1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; nano-banana-pro: Nano Banana Pro — count 1–4, resolutions 1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; gpt-image-2: GPT Image 2 — count 1–4, resolutions 1K, up to 16 image refs, image editing, default 1K/4:3; flux-2: FLUX.2 — count 1–4, resolutions 1K, default 1K/4:3; flux-2-pro: FLUX.2 Pro — count 1–1, resolutions 1K, up to 4 image refs, image editing, default 1K/4:3; seedream-5-pro: Seedream 5.0 Pro — count 1–1, resolutions 1K/2K, up to 10 image refs, image editing, default 2K/auto; ideogram-4: Ideogram 4 — count 1–4, resolutions 1K, default 1K/1:1; qwen-image-3: Qwen Image 3 — count 1–4, resolutions 1K, default 1K/1:1; recraft-v3: Recraft V3 — count 1–1, resolutions 1K, up to 1 image refs, image editing, default 1K/1:1. Model-specific limits are validated before submission."
           },
           "prompt": {
             "type": "string",
@@ -1189,9 +1219,14 @@
               "2:3",
               "4:5",
               "5:4",
-              "21:9"
+              "21:9",
+              "auto",
+              "4:1",
+              "1:4",
+              "8:1",
+              "1:8"
             ],
-            "description": "Defaults to 16:9. Do not send width/height with aspectRatio."
+            "description": "Native providers default to 16:9; Fal uses its selected model default. Fal-only ratios require a supporting model. Do not send width/height with aspectRatio."
           },
           "imageSize": {
             "type": "string",
@@ -1199,9 +1234,10 @@
               "512px",
               "1K",
               "2K",
-              "4K"
+              "4K",
+              "0.5K"
             ],
-            "description": "Defaults to 1K. 512px is Gemini-only; use 2K/4K only when explicitly requested. Ignored when custom width/height are set."
+            "description": "Native providers default to 1K; Fal uses model defaults and validates its supported sizes. For Fal, 512px is an alias for 0.5K. Use 2K/4K only when explicitly requested. Ignored when custom width/height are set."
           },
           "width": {
             "type": "integer",
@@ -1942,7 +1978,7 @@
     },
     {
       "name": "submit_video",
-      "description": "Submit a Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, OFox, or V-Router video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
+      "description": "Submit a V-Router, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1955,9 +1991,27 @@
               "byteplus",
               "grok-imagine-video",
               "ofox",
-              "vrouter"
+              "vrouter",
+              "fal"
             ],
-            "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway. vrouter uses the video model selected from the current VOS account and currently accepts text-to-video inputs."
+            "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet."
+          },
+          "falModel": {
+            "type": "string",
+            "enum": [
+              "seedance-2.5",
+              "seedance-2.0",
+              "kling-v3-standard",
+              "kling-v3-pro",
+              "kling-o3-standard",
+              "kling-o3-pro",
+              "veo-3.1",
+              "veo-3.1-fast",
+              "wan-3.0",
+              "minimax-h3-max",
+              "pixverse-v6"
+            ],
+            "description": "With model=fal, select a curated Fal video model; omitted uses the saved Fal video default. seedance-2.5: Seedance 2.5 — audio toggle supported, resolutions 480p/720p, durations 4–30s, up to 30 image refs, up to 10 video refs, up to 10 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; seedance-2.0: Seedance 2.0 — audio toggle supported, resolutions 480p/720p/1080p/4k, durations 4–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; kling-v3-standard: Kling 3.0 Standard — audio toggle supported, resolutions 720p, durations 3–15s, first frame/last frame, default 720p/5s/16:9; kling-v3-pro: Kling 3.0 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, first frame/last frame, default 1080p/5s/16:9; kling-o3-standard: Kling O3 Standard — audio toggle supported, resolutions 720p, durations 3–15s, up to 4 image refs, reference mode, default 720p/5s/16:9; kling-o3-pro: Kling O3 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, up to 4 image refs, reference mode, default 1080p/5s/16:9; veo-3.1: Veo 3.1 — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; veo-3.1-fast: Veo 3.1 Fast — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; wan-3.0: Wan 3.0 — audio toggle supported, resolutions 480p/720p/1080p, durations 5/10s, first frame/last frame, default 1080p/5s/adaptive; minimax-h3-max: MiniMax H3 Max — no audio toggle, resolutions 480p/768p/1080p, durations 5–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, reference mode, default 768p/5s/16:9; pixverse-v6: PixVerse V6 — audio toggle supported, resolutions 360p/540p/720p/1080p, durations 1–15s, first frame, default 720p/5s/16:9. Omit duration/resolution to use model defaults."
           },
           "prompt": {
             "type": "string",
@@ -1975,7 +2029,7 @@
                 "type": "string"
               }
             ],
-            "description": "Integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API)."
+            "description": "For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API)."
           },
           "ratio": {
             "type": "string",
@@ -1988,7 +2042,10 @@
               "512p",
               "720p",
               "1080p",
-              "4k"
+              "4k",
+              "768p",
+              "360p",
+              "540p"
             ],
             "description": "Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p. ofox: 480p/720p(default)/1080p, per-model support enforced by the API."
           },
@@ -3091,6 +3148,116 @@
             "description": "Maximum edit boundaries to include in the evidence sheet; defaults to 8."
           }
         }
+      }
+    },
+    {
+      "name": "publish_to_social",
+      "description": "Publish a finished video render to social platforms (TikTok, Instagram Reels, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, Bluesky) through Upload-Post. Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm, a requestId, and the file, profile, platforms, missingPlatforms (not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user explicitly approves it in this conversation, call again with the SAME arguments plus confirm:true and previewId set to that requestId. If the Upload-Post account, the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. Pinterest needs pinterestBoardId. A confirm returns phase admitted immediately and the upload continues in the background; poll track_social_publish with the requestId. Publishing is public and cannot be undone; re-sending an approved publish resumes it instead of posting twice. source is the downloadUrl from a completed track_export (/media/uploads/...). Requires the Upload-Post key and profile in Settings.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "downloadUrl of a completed video render (/media/uploads/<file>.mp4)."
+          },
+          "platforms": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "tiktok",
+                "instagram",
+                "youtube",
+                "linkedin",
+                "facebook",
+                "x",
+                "threads",
+                "pinterest",
+                "bluesky"
+              ]
+            },
+            "minItems": 1,
+            "description": "Where to publish. TikTok, Instagram Reels and YouTube Shorts expect a vertical 9:16 render."
+          },
+          "title": {
+            "type": "string",
+            "description": "Caption / title used on every platform. YouTube allows at most 100 characters."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional longer text for YouTube, LinkedIn, Facebook and Pinterest."
+          },
+          "youtubePrivacy": {
+            "type": "string",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ],
+            "description": "Defaults to private."
+          },
+          "tiktokPrivacy": {
+            "type": "string",
+            "enum": [
+              "PUBLIC_TO_EVERYONE",
+              "MUTUAL_FOLLOW_FRIENDS",
+              "FOLLOWER_OF_CREATOR",
+              "SELF_ONLY"
+            ],
+            "description": "Omit to keep the TikTok account default."
+          },
+          "pinterestBoardId": {
+            "type": "string",
+            "description": "Required when platforms includes pinterest: the ID of the Pinterest board to pin the video to. Ask the user for it."
+          },
+          "aiGenerated": {
+            "type": "boolean",
+            "description": "Disclose AI-generated content (TikTok, Instagram, YouTube and X labels). Ask the user when the video uses generated visuals or voice."
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Omit on the first call (preview). true only after the user approved the preview in chat."
+          },
+          "previewId": {
+            "type": "string",
+            "description": "Required with confirm:true: the requestId returned by the preview the user approved."
+          }
+        },
+        "required": [
+          "source",
+          "platforms",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "track_social_publish",
+      "description": "Check a publish started by publish_to_social. action=status returns the current state; action=wait polls until it settles or timeoutSeconds elapses, then returns the last known state with waitExpired (use one bounded wait, then report). status is uploading while the video is still being sent, then per-platform results: completed (url or postId), failed (error), retryable, or skipped (no account on the profile). status unknown means Upload-Post never confirmed the upload: it is not re-sent. Read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "requestId returned by publish_to_social."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "status",
+              "wait"
+            ],
+            "description": "Defaults to status."
+          },
+          "timeoutSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 25,
+            "description": "For action=wait. Defaults to 20."
+          }
+        },
+        "required": [
+          "requestId"
+        ]
       }
     },
     {
@@ -5325,7 +5492,7 @@
     },
     {
       "name": "import_timeline",
-      "description": "Import FCPXML 1.x asset-clip timelines or CMX 3600 EDL text into a new editable OpenChatCut timeline. Referenced files must already exist in the current media pool; matching uses asset id, original path, source path, source filename, and asset name. The import preserves track/lane placement, timeline start and duration, source in-point, and file-backed audio clips. Unresolved or ambiguous media aborts the import without changing the project.",
+      "description": "Import a Final Cut Pro / DaVinci Resolve FCPXML 1.x project or a CMX 3600 EDL into a new editable OpenChatCut timeline. The new timeline runs at the project frame rate; a sequence or list at another rate is converted, rounding cut points to the nearest frame. FCPXML times are converted to the new timeline through the sequence tcStart and every enclosing clip, gap, connected clip or storyline (lanes), compound clip (ref-clip), sync-clip, multicam clip (active angle) and audition (active pick), including rate conform and retime speed; source in-points are measured from each file's own start timecode. EDL events are placed from the list's record start: the hour boundary (e.g. 01:00:00:00) when the first record-in is within a minute of it, otherwise the first record-in, or startTimecode when given. EDLs do not record their frame rate: fps defaults to the current timeline's (29.97/59.94 for drop-frame lists). Referenced files must already exist in the current media pool; matching uses asset id, original path, source path, source filename, and asset name. Unresolved or ambiguous media aborts the import without changing the project. Titles, generators, captions, transitions, effects, disabled clips, and audio of a video file that its video clip cannot carry are not imported; the result lists every skipped element with its reason and warns about approximations.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5348,6 +5515,17 @@
           "activate": {
             "type": "boolean",
             "description": "Open the imported timeline after success; default true."
+          },
+          "fps": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 240,
+            "description": "EDL only: frame rate the list was written at, e.g. 25 or 29.97. Default: the current timeline fps."
+          },
+          "startTimecode": {
+            "type": "string",
+            "pattern": "^\\d{1,2}[:;]\\d{2}[:;]\\d{2}[:;.,]\\d{2}$",
+            "description": "EDL only: record timecode that becomes frame 0, e.g. \"01:00:00:00\" or \"00:59:50:00\"."
           }
         },
         "required": [

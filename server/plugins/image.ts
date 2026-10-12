@@ -1,3 +1,5 @@
+import { generateFalCatalogImage } from './fal-client.ts';
+import { buildFalCatalogImageRequest, type FalCatalogInput } from './fal-catalog-input.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -58,6 +60,7 @@ interface ImagePluginOptions {
 
 interface ImageRequest {
   model?: string;
+  falModel?: string;
   prompt?: string;
   aspectRatio?: string;
   imageSize?: string;
@@ -78,7 +81,9 @@ interface ImageRequest {
 }
 
 export interface ValidImageRequest {
-  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'vrouter';
+  model: 'gpt-image-2' | 'nano-banana' | 'image-01' | 'wavespeed' | 'byteplus' | 'grok-imagine' | 'vrouter' | 'fal';
+  falModel?: string;
+  falInput?: FalCatalogInput;
   prompt: string;
   aspectRatio?: string;
   imageSize: string;
@@ -145,6 +150,21 @@ function rejectForeignImageOptions(input: ImageRequest, model: ValidImageRequest
 /** Pure request validation — exported for unit checks. */
 export function validateImageRequest(input: ImageRequest): ValidImageRequest {
   const model = String(input.model ?? 'gpt-image-2');
+  if (model === 'fal') {
+    if (!input.falModel?.trim()) throw new Error('Choose a Fal image model in Settings or specify falModel');
+    for (const key of ['width', 'height', 'quality', 'maskPath', 'background', 'moderation', 'inputFidelity', 'outputFormat', 'outputCompression', 'seed', 'promptOptimizer'] as const) {
+      if (input[key] !== undefined) throw new Error(`${key} is not supported by the Fal image integration`);
+    }
+    const falInput: FalCatalogInput = {
+      falModel: input.falModel, prompt: String(input.prompt ?? '').trim(), count: input.count ?? 1,
+      aspectRatio: input.aspectRatio, resolution: input.imageSize === '512px' ? '0.5K' : input.imageSize,
+      imageUrls: input.referencePaths ?? [],
+    };
+    buildFalCatalogImageRequest(falInput);
+    return { model, falModel: input.falModel, falInput, prompt: falInput.prompt, count: input.count ?? 1,
+      referencePaths: input.referencePaths ?? [], aspectRatio: input.aspectRatio ?? '16:9',
+      imageSize: input.imageSize ?? '1K', quality: 'high', outputFormat: 'png' };
+  }
   if (model !== 'gpt-image-2' && model !== 'nano-banana' && model !== 'image-01' && model !== 'wavespeed' && model !== 'byteplus' && model !== 'grok-imagine' && model !== 'vrouter') {
     throw new Error(`unsupported model ${model}`);
   }
@@ -364,7 +384,9 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
       server.middlewares.use('/generate/image', async (req, res) => {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
-          const input = validateImageRequest(await readJson(req));
+          const raw = await readJson(req);
+          if (raw.model === 'fal' && !raw.falModel) raw.falModel = getKey('FAL_IMAGE_MODEL').trim() || undefined;
+          const input = validateImageRequest(raw);
           const {
             model, prompt, aspectRatio, imageSize, quality, count, referencePaths, maskPath,
             background, moderation, inputFidelity, outputFormat, outputCompression,
@@ -372,7 +394,7 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           } = input;
           const [width, height] = input.width != null && input.height != null
             ? [input.width, input.height]
-            : dimensions(aspectRatio!, imageSize);
+            : model === 'fal' ? [0, 0] : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
           if (model === 'vrouter') {
             const token = vRouterAccessToken();
@@ -382,6 +404,8 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
               model: routedModel, prompt, quality, count, size: `${width}x${height}`, referencePaths, maskPath,
               background, moderation, inputFidelity, outputFormat, outputCompression,
             });
+          } else if (model === 'fal') {
+            images = await generateFalCatalogImage(input.falInput!);
           } else if (model === 'nano-banana') {
             if (!options.geminiApiKey) throw new Error('Nano Banana is not configured. Set GEMINI_API_KEY in .env.local.');
             if (!aspectRatio) throw new Error('Nano Banana requires aspectRatio');
@@ -419,7 +443,10 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
           }
           const paths = await Promise.all(images.map((image) => saveImage(image, model === 'gpt-image-2' ? outputFormat : 'png')));
           const reportDimensions = model !== 'image-01' || input.width != null;
-          sendJson(res, 200, { paths, ...(reportDimensions ? { width, height } : {}) });
+          const imageDimensions = model === 'fal'
+            ? (images[0].width && images[0].height ? { width: images[0].width, height: images[0].height } : {})
+            : reportDimensions ? { width, height } : {};
+          sendJson(res, 200, { paths, ...imageDimensions });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           const detail = error instanceof Error && error.cause

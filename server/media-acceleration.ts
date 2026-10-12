@@ -139,9 +139,9 @@ export async function probeEncoderQualityMode(
   return promise;
 }
 
-/** 探测 ffmpeg 编译支持后返回解码硬加速参数；不支持时为空数组（软解）。 */
+/** 先确认设备可用，再检查 FFmpeg 编译支持；无可用硬件时使用软解。 */
 export async function resolveHwDecodeArgs(ffmpeg: string, encoder?: H264Encoder): Promise<string[]> {
-  const candidate = hwDecodeArgs(encoder);
+  const candidate = hwDecodeArgs(encoder ?? await resolveH264Encoder(ffmpeg));
   if (!candidate.length) return [];
   const available = await availableHwAccels(ffmpeg);
   return available.has(candidate[1]!) ? candidate : [];

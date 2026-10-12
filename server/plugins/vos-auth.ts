@@ -7,6 +7,7 @@ import { editorCredentialAuthorized, externalMcpVOSUser } from '../editor-auth.t
 import { importTokenVOSUser } from '../external-agent/import-token.ts';
 import { hydrateKeystoreForCurrentProfile } from '../keystore.ts';
 import { resolveRuntimeProfile } from '../runtime-profile.ts';
+import { initializeSqliteProjectStore } from '../storage/sqlite-store.ts';
 import {
   runAsVOSUser,
   vosAuthEnabled,
@@ -268,12 +269,22 @@ export function vosAuthPlugin(): Plugin {
             : pathname === '/upload'
               ? importTokenVOSUser(new URL(req.url ?? '/', 'http://localhost').searchParams.get('handoff') ?? '')
               : undefined;
-          if (externalUser) { runAsVOSUser(externalUser, next); return; }
+          if (externalUser) {
+            void runAsVOSUser(externalUser, async () => {
+              await hydrateKeystoreForCurrentProfile();
+              await initializeSqliteProjectStore();
+              next();
+            }).catch(() => json(res, 500, { error: 'project storage initialization failed' }));
+            return;
+          }
           req.resume();
           json(res, 401, { error: 'VOS authentication required' });
           return;
         }
-        runAsVOSUser(Object.freeze({ ...found.user, accessToken: found.accessToken }), next);
+        void runAsVOSUser(Object.freeze({ ...found.user, accessToken: found.accessToken }), async () => {
+          await initializeSqliteProjectStore();
+          next();
+        }).catch(() => json(res, 500, { error: 'project storage initialization failed' }));
       });
     },
   };

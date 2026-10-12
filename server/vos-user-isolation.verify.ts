@@ -8,12 +8,13 @@ const root = await mkdtemp(join(tmpdir(), 'v-chatcut-vos-isolation-'));
 process.env.OPENCHATCUT_VOS_AUTH_ENABLED = 'true';
 process.env.OPENCHATCUT_DATA_DIR = root;
 
-const [{ runAsVOSUser }, runtime, keystore, editorAuth, importTokens] = await Promise.all([
+const [{ runAsVOSUser }, runtime, keystore, editorAuth, importTokens, sqlite] = await Promise.all([
   import('./vos-user-context.ts'),
   import('./runtime-profile.ts'),
   import('./keystore.ts'),
   import('./editor-auth.ts'),
   import('./external-agent/import-token.ts'),
+  import('./storage/sqlite-store.ts'),
 ]);
 
 const userA = Object.freeze({
@@ -103,6 +104,26 @@ try {
   assert.match(settingsB, /bob-secret/);
   assert.doesNotMatch(settingsB, /alice-secret/);
 
+  // Both accounts use the same logical keys in one server process. Database
+  // initialization and interleaved writes must retain the originating account.
+  await Promise.all([userA, userB].map((user) => runAsVOSUser(user, async () => {
+    await sqlite.initializeSqliteProjectStore();
+    await sqlite.sqliteWriteEntry('chat:shared-project', { owner: user.namespace });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(await sqlite.sqliteReadEntry('chat:shared-project'), {
+      found: true, value: { owner: user.namespace },
+    });
+  })));
+  sqlite.resetSqliteStoreForTests();
+  for (const user of [userB, userA]) {
+    await runAsVOSUser(user, async () => {
+      await sqlite.initializeSqliteProjectStore();
+      assert.deepEqual(await sqlite.sqliteReadEntry('chat:shared-project'), {
+        found: true, value: { owner: user.namespace },
+      });
+    });
+  }
+
   const mcpA = runAsVOSUser(userA, () => editorAuth.externalMcpToken());
   const mcpB = runAsVOSUser(userB, () => editorAuth.externalMcpToken());
   assert.notEqual(mcpA, mcpB);
@@ -130,5 +151,6 @@ try {
 
   console.log('VOS user isolation verification passed');
 } finally {
+  sqlite.resetSqliteStoreForTests();
   await rm(root, { recursive: true, force: true });
 }

@@ -39,6 +39,7 @@
   <img alt="Remotion" src="https://img.shields.io/badge/Remotion-4-0B84F3?style=flat" />
   <img alt="Electron" src="https://img.shields.io/badge/Electron-43-47848F?style=flat&logo=electron&logoColor=white" />
   <img alt="MCP" src="https://img.shields.io/badge/MCP-Agent_native-7C3AED?style=flat" />
+  <a href="https://atomgit.com/Oxsline/openchatcut"><img alt="AtomGit G-Star" src="https://img.shields.io/badge/AtomGit-G--Star-DA203E?logo=gitcode&logoColor=white" /></a>
 </p>
 
 <p align="center">
@@ -196,6 +197,7 @@ Describe the goal → Agent reads the project → Produces verifiable edits → 
 | AI generation | Image, video, speech, music, and sound-effect jobs with progress tracking |
 | Media | Uploads, folders, online image/video/audio search, and Firecrawl visual-media fallback |
 | Export | MP4, audio, captions, FCPXML, project import/export, export history, hardware-aware H.264 acceleration, and resource-aware export queueing |
+| Publishing | Agent-driven publishing of finished renders to TikTok, Instagram, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, and Bluesky via Upload-Post, with a preview and explicit confirmation first |
 | Agent | Built-in conversational agent, skills, proposal-based edits, and external Streamable HTTP MCP |
 
 ---
@@ -257,6 +259,8 @@ These are early builds. The macOS packages are not yet signed or notarized, so t
 
 Requires Node.js 24.x and npm. The supported Node.js range is enforced by `package.json`, and `.nvmrc` selects the matching major version for Node version managers.
 
+On Linux x64, `npm install` also downloads ONNX Runtime's optional CUDA provider (several hundred MB from NuGet). For a CPU-only install, run `ONNXRUNTIME_NODE_INSTALL=skip npm install` instead.
+
 ```bash
 git clone https://github.com/0xsline/OpenChatCut.git
 cd OpenChatCut
@@ -271,6 +275,8 @@ Open:
 http://localhost:5199
 ```
 
+The editor needs a browser [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts): open OpenChatCut at `http://localhost` or `http://127.0.0.1` on the machine running it, or serve it over HTTPS. Over plain HTTP from another device (a LAN IP or reverse proxy), browsers disable Web Crypto, WebCodecs, and the clipboard, so the project list still loads but the editor shows this requirement instead of opening.
+
 Only add the model or media-service credentials you actually use to `.env.local`. Features without configured third-party credentials report the missing key explicitly; local timeline editing, built-in media, and other configured capabilities continue to work.
 
 Development launches are isolated per Git checkout/worktree by default. `npm run dev` and
@@ -284,9 +290,9 @@ the legacy shared development store.
 - **API keys:** open **Settings → Agent model**, choose a provider, and save its API key and model. Keys remain server-side.
 - **ICTrek tokens:** open **Settings → Agent model → ICTrek · 芯途异构** and follow the registration link to [ICTrek](https://ai.ictrek.com) to register an account and apply for an API Token, then enter it in API Key. The independent provider defaults to `https://ai.ictrek.com/v1` and uses OpenAI-compatible Chat Completions. Test the connection and select a model available to your token; `LLM_ICTREK_API_KEY`, `LLM_ICTREK_BASE_URL`, and `LLM_ICTREK_MODEL` are stored separately from OpenAI settings.
 - **ChatGPT subscription:** install the official Codex CLI 0.146.0 or newer, then open **Settings → Agent model → OpenAI · Codex**. Sign in through the browser or device-code flow, load the account's models, choose a model-specific reasoning effort (or keep its default), and select Codex from the chat model picker. OpenChatCut uses a dedicated Codex profile; the official CLI owns credential storage, token renewal, and logout, while OAuth tokens are never exposed to the browser.
-- **Claude subscription:** OpenChatCut does not collect Claude OAuth credentials. Use Claude Code through the local MCP connection below. The built-in Agent can use Anthropic through an API key.
+- **Claude subscription:** when Claude Code CLI is installed locally, select **Settings → Agent model → Anthropic · Claude Code** to use its existing subscription login. The CLI owns credentials. External Claude Code sessions can also use the MCP connection below; Anthropic API-key access remains available.
 
-Project storage automatically migrates existing JSON data to SQLite before use, separately for each VOS user. Original JSON files remain available; migration failures keep legacy storage active and retry later. `OPENCHATCUT_SQLITE_STORE=0` explicitly selects legacy storage for rollback (later SQLite edits are not copied back to JSON).
+Project storage imports existing JSON data into SQLite before use, separately for each VOS user. SQLite is the sole storage backend; original JSON files remain backups. A failed import blocks storage operations and retries on the next access. `OPENCHATCUT_SQLITE_STORE` no longer switches storage backends.
 
 The built-in Agent always runs the model loop on the local server. Chat, drafts, and proposals survive page refreshes and local service restarts. Timeline changes still go through the active editor's validated, undoable commands.
 
@@ -299,6 +305,8 @@ To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOT
 
 Local H.264 exports automatically prefer VideoToolbox on macOS and NVENC on compatible Windows systems, then fall back to software encoding. Tune render concurrency and the heavy-export limit with `OPENCHATCUT_RENDER_CONCURRENCY` and `OPENCHATCUT_MAX_ACTIVE_EXPORTS`, disable hardware encoding with `OPENCHATCUT_DISABLE_HARDWARE_ENCODING`, or override FFmpeg-side encoder selection with `OPENCHATCUT_H264_ENCODER`; see [`.env.example`](.env.example).
 
+On Apple Silicon, more render workers can slow down video-heavy exports even when VideoToolbox encoding is active. See [macOS render tuning](MACOS-RENDER-TUNING.md) for an M4 Max benchmark and a way to test your own workload. These measurements do not establish a default for other Macs or Windows.
+
 ### Desktop development
 
 ```bash
@@ -309,9 +317,9 @@ The desktop app uses an Electron shell with the same embedded services. The web 
 
 ### VOS integration
 
-The VOS application definition lives in `ictrek.app/`, and container build files live in `vos_docker/`. The frontend has AMD64 and ARM64 images only. The backend provides six mutually exclusive profiles: `amd-with-cuda`, `amd-without-cuda`, `arm-with-cuda`, `arm-without-cuda`, `l4t`, and `thor-spark`; installation requires one. VOS uses host architecture, CUDA, and `device-type` caps to determine which profiles are available. CUDA profiles prefer NVENC and automatically fall back to libx264 when hardware encoding is unavailable. Use `vos_docker/build_image.sh --sheet <Feishu-sheet>` on each matching build host; image tags contain only the platform and build date. Then run `ictrek.app/scripts/update_version.sh patch` to trigger the VOS pull-package workflow. The top-right About control reads `VOS_APP_VERSION` from the running backend, so its version matches the installed VOS package even when a package reuses an existing image.
+The VOS application definition lives in `ictrek.app/`, and container build files live in `vos_docker/`. The frontend has AMD64 and ARM64 images only. The backend provides six mutually exclusive profiles: `amd-with-cuda`, `amd-without-cuda`, `arm-with-cuda`, `arm-without-cuda`, `l4t`, and `thor-spark`; installation requires one. VOS uses host architecture, CUDA, and `device-type` caps to determine which profiles are available. CUDA profiles prefer NVENC and automatically fall back to libx264 when hardware encoding is unavailable. Analysis and frame extraction use hardware decoding only after the device probe succeeds, so CPU profiles also work with system FFmpeg builds that advertise VA-API. Use `vos_docker/build_image.sh --sheet <Feishu-sheet>` on each matching build host; image tags contain only the platform and build date. Then run `ictrek.app/scripts/update_version.sh patch` to trigger the VOS pull-package workflow. The top-right About control reads `VOS_APP_VERSION` from the running backend, so its version matches the installed VOS package even when a package reuses an existing image.
 
-VOS users can select V-Router for Agent, vision, image, video, voice, and transcription models. V-ChatCut reads the current account's catalog and filters models by the endpoint required by each feature; video generation uses `videos/generations`, and the Agent list keeps only models that accept `/v1/chat/completions`, so v-voice audio models merged by V-Router never appear as chat options. After a TTS model is selected, voice settings load its available choices from `/v1/audio/voices` and save a default voice for Agent and generation requests. API keys, upstream URLs, and model management remain in V-Router, while V-ChatCut stores only the selected model name and voice ID.
+VOS users can select V-Router for Agent, vision, image, video, voice, transcription, and music models. V-ChatCut reads the current account's catalog and filters models by the endpoint required by each feature; video generation uses `videos/generations`, and the Agent list keeps only models that accept `/v1/chat/completions`, so v-voice audio models merged by V-Router never appear as chat options. After a TTS model is selected, voice settings load its available choices from `/v1/audio/voices` and save a default voice for Agent and generation requests. Music generation uses `audio/music/generations` and supports duration, negative prompt, seed, BPM, key, time signature, instrumental selection, and WAV/FLAC output; upstream errors appear in the generation job. API keys, upstream URLs, and model management remain in V-Router, while V-ChatCut stores only the selected model name and voice ID.
 
 The VOS package uses the OIDC Fastpath and partitions server-side projects, media, jobs, connector credentials, and browser storage by the immutable OIDC `sub` under `/data/users/<subject-hash>/`. The application-wide VOS exposed view is disabled as a multi-user source by default and should be enabled only for a public library. Legacy shared data requires an explicit VOS administrator call to `POST /api/auth/claim-legacy-data` and is never exposed automatically.
 
@@ -396,6 +404,50 @@ approve it in OpenChatCut before reporting that the edit was applied.
 
 External agents invoke the same internal editing tools and `EditorCore` commands as the editor itself. There are no separate project formats that can drift apart, and the live timeline is not changed while an external draft is being prepared.
 
+### Qoder
+
+Qoder is one-click too: the guide's **Connect** button writes the endpoint and
+bearer token into Qoder's own settings file, keeping any unrelated settings and
+MCP servers already there.
+
+```text
+~/.qoder/settings.json        (international build)
+~/.qoder-cn/settings.json     (China build — written as well when installed)
+```
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Restart Qoder afterwards to load the server.
+
+### Qwen Work (千问办公)
+
+千问办公 keeps custom MCP servers inside its own connector store rather than a
+config file, so OpenChatCut cannot write this one for you. In the guide, use
+**Copy config** on the 千问办公 card, then in 千问办公 open
+连接器 → 自定义 MCP → 添加, paste the JSON, and save:
+
+```json
+{
+  "mcpServers": {
+    "openchatcut": {
+      "type": "streamable-http",
+      "url": "http://localhost:5199/api/external-mcp/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
 ### Protecting MCP access
 
 When exposing the MCP endpoint yourself, configure:
@@ -423,7 +475,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Editing core | Immutable timeline state, command layer, and proposal-based application |
-| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, and compatible APIs), Agent Skills, MCP SDK |
+| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, Requesty, Cheaper Inference, and compatible APIs), Agent Skills, MCP SDK |
 | Preview and visuals | Remotion Player, WebGL / GLSL |
 | Server | Dual-host Vite / Electron plugins and a server-side keystore |
 | Persistence | Shared local project store under `~/.openchatcut`, IndexedDB cache, configurable local media directory, optional Cloudflare R2 |
@@ -469,6 +521,13 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 
 ---
 
+### Fal.ai image and video generation
+
+Fal.ai is an optional generation provider with an explicit image/video model catalog.
+Configure it under **Settings → AI Generation → Image or Video → Fal.ai**.
+See [Fal setup, supported models, and extension guide](FAL.md) for supported modes,
+server-only credentials, and checks that do not spend generation credits.
+
 ## Development and Verification
 
 ```bash
@@ -504,6 +563,8 @@ OpenChatCut is built with the following core projects and specifications:
 | [Model Context Protocol](https://modelcontextprotocol.io/) | Protocol foundation that enables Codex, Claude Code, and other external agents to access projects and timeline tools. |
 | [Vercel AI SDK](https://ai-sdk.dev/) | Provider-neutral model streaming and tool calling for the built-in Agent. |
 | [tt-a1i/archify](https://github.com/tt-a1i/archify) | Tool used to define, validate, and generate the README's runtime architecture diagram. |
+
+JianYing / CapCut draft export is powered by [capcut-cli](https://github.com/renezander030/capcut-cli).
 
 This list covers the project's major technical foundations. It does not replace the licenses bundled with individual dependencies, fonts, or binaries. See `package-lock.json` for JavaScript dependency versions and [`assets/fonts/LICENSES.md`](assets/fonts/LICENSES.md) for font licenses.
 

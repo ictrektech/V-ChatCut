@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { sqliteStoreEnabled, storePath } from './sqlite-store.ts';
+import { sqliteStoreReady, storePath } from './sqlite-store.ts';
 import { segmentForIndex } from './search-tokenizer.ts';
 
 const FTS_TABLE = 'search_fts';
@@ -25,14 +25,14 @@ export interface SearchHit {
 const connections = new Map<string, DatabaseSync>();
 
 function openSearchConnection(): DatabaseSync | null {
-  if (!sqliteStoreEnabled()) return null;
+  if (!sqliteStoreReady()) return null;
   try {
     const path = storePath();
     const existing = connections.get(path);
     if (existing) return existing;
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path);
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+    db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
     db.exec(`CREATE TABLE IF NOT EXISTS ${STATE_TABLE} (
       k TEXT PRIMARY KEY,
       sha256 TEXT NOT NULL

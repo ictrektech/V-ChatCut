@@ -9,6 +9,7 @@ import {
   h264HardwareCandidates,
   h264ProbeArgs,
   hwDecodeArgs,
+  resolveHwDecodeArgs,
   isHardwareH264Encoder,
   resolveH264TargetBitrate,
   resolveVaapiDevice,
@@ -27,6 +28,15 @@ assert.equal(isHardwareH264Encoder('h264_vaapi'), true);
 assert.deepEqual(h264EncoderAttempts('h264_nvenc'), ['h264_nvenc', 'libx264']);
 assert.deepEqual(h264EncoderAttempts('libx264'), ['libx264']);
 assert.deepEqual(hwDecodeArgs('libx264'), [], 'software encoding must keep decoded frames in system memory');
+const previousHardwareDisable = process.env.OPENCHATCUT_DISABLE_HARDWARE_ENCODING;
+try {
+  process.env.OPENCHATCUT_DISABLE_HARDWARE_ENCODING = 'true';
+  assert.deepEqual(await resolveHwDecodeArgs('/unused-ffmpeg'), [],
+    'CPU-only profiles must not attempt a platform hardware decoder');
+} finally {
+  if (previousHardwareDisable === undefined) delete process.env.OPENCHATCUT_DISABLE_HARDWARE_ENCODING;
+  else process.env.OPENCHATCUT_DISABLE_HARDWARE_ENCODING = previousHardwareDisable;
+}
 
 assert.equal(
   h264EncoderFallbackReason('h264_nvenc', new Error('/private/path: No NVENC capable devices found')),

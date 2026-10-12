@@ -1,5 +1,5 @@
 import {
-  modelSelect,
+  modelPicker,
   modelText,
   routeSelect,
   secret,
@@ -67,7 +67,7 @@ const transcriptionPage = (
   fields: [...fields, ...COMMON_TRANSCRIPTION_FIELDS],
 });
 
-export const localAsrPage = transcriptionPage('local', 'localasr', '本地模型（whisper）', [
+const localTranscriptionPage = transcriptionPage('local', 'localasr', '本地模型（whisper）', [
   {
     name: 'LOCAL_ASR_MODEL',
     label: '默认模型',
@@ -82,7 +82,17 @@ export const localAsrPage = transcriptionPage('local', 'localasr', '本地模型
       { value: 'large-v3-turbo', label: 'Whisper Large v3 Turbo（约 1.1GB · 多语言最强）' },
     ],
   },
-], '转写在本机完成：免费、离线、素材不出本机。模型按需下载（见下方列表），自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。');
+], '转写在本机完成：免费、离线、素材不出本机。模型需先下载，下载与删除在 本地模型 → 本地转写 页（点下方按钮前往）。自动选择设备优势后端：WebGPU 不可用时回退 CPU。本地转写不含说话人分离（全部归为同一位说话人）。');
+
+/** The page with the local Whisper model list (download / delete). */
+export const LOCAL_ASR_SETTINGS_ROUTE = 'local/asr';
+
+// The model list lives on 本地模型 → 本地转写. This page used to promise it
+// "below" with no way to get there, while runtime errors sent users here (#126).
+export const localAsrPage: SettingsVendorPage = {
+  ...localTranscriptionPage,
+  noteAction: { label: '下载 / 管理本地模型', route: LOCAL_ASR_SETTINGS_ROUTE },
+};
 
 export const VOICE_SETTINGS_GROUP: SettingsGroup = {
   key: 'voice',
@@ -108,7 +118,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       fields: [
         secret('ELEVENLABS_API_KEY', 'API Key'),
         text('ELEVENLABS_BASE_URL', 'Base URL', '默认 https://api.elevenlabs.io'),
-        modelSelect('ELEVENLABS_TTS_MODEL', '配音模型', 'eleven_multilingual_v2',
+        modelPicker('ELEVENLABS_TTS_MODEL', '配音模型', 'eleven_multilingual_v2',
           ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5']),
         modelText('ELEVENLABS_SOUND_MODEL', '音效模型', 'eleven_text_to_sound_v2'),
       ],
@@ -125,7 +135,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       key: 'voice/minimax', vendor: 'minimax', title: 'MiniMax', note: MINIMAX_NOTE, fields: [
         secret('MINIMAX_API_KEY', 'API Key'),
         text('MINIMAX_BASE_URL', 'Base URL', '默认 https://api.minimaxi.com'),
-        modelSelect('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
+        modelPicker('MINIMAX_TTS_MODEL', '配音模型', 'speech-2.6-hd',
           ['speech-2.6-hd', 'speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo']),
       ],
     },
@@ -147,7 +157,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       key: 'voice/speechify', vendor: 'speechify', title: 'Speechify', fields: [
         secret('SPEECHIFY_TTS_API_KEY', 'API Key'),
         text('SPEECHIFY_TTS_BASE_URL', 'Base URL', '默认 https://api.sws.speechify.com'),
-        modelSelect('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
+        modelPicker('SPEECHIFY_TTS_MODEL', '配音模型', 'simba-multilingual',
           ['simba-multilingual', 'simba-english', 'simba-3.2']),
       ],
     },
@@ -244,6 +254,7 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
 };
 
 export const ROUTE_NEEDS: Record<string, readonly (readonly string[])[]> = {
+  fal: [['FAL_KEY']],
   'gpt-image-2': [['IMAGE_API_KEY'], ['OPENAI_API_KEY']],
   'nano-banana': [['GEMINI_API_KEY']],
   'image-01': [['MINIMAX_API_KEY']],

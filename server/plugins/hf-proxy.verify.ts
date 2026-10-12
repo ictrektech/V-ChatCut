@@ -141,6 +141,10 @@ assert.equal(await downloadModelFile(downloadTarget, cachedDownload, {
   expectedSha256: fixtureIntegrity.sha256,
 }), cachedDownload);
 await writeFile(cachedDownload, corruptFixture);
+// Filesystems with coarse timestamp updates may reuse the previous fingerprint
+// for an immediate same-size overwrite. Make this fixture change deterministic.
+const corruptModifiedAt = new Date(Date.now() + 2000);
+await utimes(cachedDownload, corruptModifiedAt, corruptModifiedAt);
 const aborted = new AbortController();
 aborted.abort(new Error('do not access the network'));
 await assert.rejects(

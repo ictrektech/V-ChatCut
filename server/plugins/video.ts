@@ -1,3 +1,5 @@
+import { generateFalVideo } from './fal-client.ts';
+import { getKey } from '../keystore.ts';
 import { proxyDispatcher } from '../outbound-proxy.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
@@ -19,11 +21,12 @@ import {
   ServerReferencePreflightError,
 } from './video-media.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
+import { hailuoRequestBody } from './minimax-video.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
 import { generateVRouterVideo } from './vrouter-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
-  hailuoApiResolution, seedanceApiResolution, validateVideoRequest, videoSeconds,
+  seedanceApiResolution, validateVideoRequest, validateSavedVideoRequest, videoSeconds,
   type KlingVideoReferType, type ValidVideoRequest, type VideoRequest,
 } from './video-validation.ts';
 export { hailuoApiResolution, seedanceApiResolution, validateVideoRequest } from './video-validation.ts';
@@ -83,8 +86,6 @@ async function providerError(response: Response): Promise<string> {
     return text.slice(0, 300) || `video provider failed (${response.status})`;
   }
 }
-
-const validate = validateVideoRequest;
 
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const response = await fetchWithProxy(url, init);
@@ -294,63 +295,6 @@ function hailuoFileId(raw: string): string {
   return match[1];
 }
 
-/** MiniMax S2V-01 subject-reference path (face/subject lock). Configured via MINIMAX_VIDEO_MODEL. */
-export function isMinimaxSubjectModel(modelName: string): boolean {
-  return /s2v/i.test(modelName);
-}
-
-type MinimaxVideoFamily = 'subject' | 'hailuo02' | 'hailuo23' | 'hailuo23-fast' | 'legacy-t2v' | 'legacy-i2v';
-
-function minimaxVideoFamily(modelName: string): MinimaxVideoFamily {
-  if (/^s2v-01$/i.test(modelName)) return 'subject';
-  if (/hailuo-2\.3-fast/i.test(modelName)) return 'hailuo23-fast';
-  if (/hailuo-2\.3/i.test(modelName)) return 'hailuo23';
-  if (/hailuo-02/i.test(modelName)) return 'hailuo02';
-  if (/^t2v-01(?:-director)?$/i.test(modelName)) return 'legacy-t2v';
-  if (/^i2v-01(?:-director|-live)?$/i.test(modelName)) return 'legacy-i2v';
-  throw new Error(`unsupported MiniMax video model: ${modelName}`);
-}
-
-export function validateMinimaxVideoMode(input: ValidVideoRequest, modelName: string): MinimaxVideoFamily {
-  const family = minimaxVideoFamily(modelName);
-  if (family === 'subject') {
-    if (!input.firstFramePath) throw new Error('MiniMax S2V subject-reference requires firstFrame (subject/face image)');
-    if (input.lastFramePath) throw new Error('MiniMax S2V subject-reference does not support lastFrame');
-    if (input.durationSpecified || input.resolution) throw new Error('MiniMax S2V does not accept durationSeconds or resolution');
-    if (input.fastPretreatment !== undefined) throw new Error('MiniMax S2V does not accept fastPretreatment');
-  }
-  if (family === 'hailuo23-fast' && !input.firstFramePath) throw new Error('MiniMax-Hailuo-2.3-Fast is image-to-video only and requires firstFrame');
-  if (input.lastFramePath && family !== 'hailuo02') throw new Error('MiniMax first-and-last-frame mode requires MiniMax-Hailuo-02');
-  if (input.lastFramePath && input.fastPretreatment !== undefined) throw new Error('MiniMax first-and-last-frame mode does not accept fastPretreatment');
-  if (input.resolution === '512p' && family !== 'hailuo02') throw new Error('hailuo 512p requires the MiniMax-Hailuo-02 model');
-  const legacy = family === 'legacy-t2v' || family === 'legacy-i2v';
-  if (legacy && (input.durationSeconds !== 6 || (input.resolution && input.resolution !== '720p'))) throw new Error('legacy MiniMax video models support 6s at 720p only');
-  if (legacy && input.fastPretreatment !== undefined) throw new Error('legacy MiniMax video models do not accept fastPretreatment');
-  if (family === 'legacy-t2v' && input.firstFramePath) throw new Error(`${modelName} is text-to-video only`);
-  if (family === 'legacy-i2v' && !input.firstFramePath) throw new Error(`${modelName} is image-to-video only and requires firstFrame`);
-  return family;
-}
-
-export function hailuoRequestBody(
-  input: ValidVideoRequest, modelName: string, firstFrameImage?: string, lastFrameImage?: string,
-): Record<string, unknown> {
-  const family = validateMinimaxVideoMode(input, modelName);
-  const body: Record<string, unknown> = { model: modelName, prompt: input.prompt, prompt_optimizer: input.promptOptimizer !== false };
-  if (family === 'subject') {
-    if (!firstFrameImage) throw new Error('MiniMax S2V firstFrame could not be resolved');
-    body.subject_reference = [{ type: 'character', image: [firstFrameImage] }];
-    return body;
-  }
-  if (input.firstFramePath && !firstFrameImage) throw new Error('MiniMax firstFrame could not be resolved');
-  if (input.lastFramePath && !lastFrameImage) throw new Error('MiniMax lastFrame could not be resolved');
-  body.duration = input.durationSeconds;
-  body.resolution = family.startsWith('legacy-') ? '720P' : hailuoApiResolution(input.resolution);
-  if (firstFrameImage) body.first_frame_image = firstFrameImage;
-  if (lastFrameImage) body.last_frame_image = lastFrameImage;
-  if (input.fastPretreatment === true) body.fast_pretreatment = true;
-  return body;
-}
-
 async function generateHailuo(
   input: ValidVideoRequest,
   options: VideoOptions,
@@ -400,7 +344,9 @@ async function runVideoOperation(
   const checkpoint = generationResultCheckpoint(storedResultUrls, expectedResultCount, providerTaskId);
   let urls = checkpoint.urls;
   if (!checkpoint.complete) {
-    if (input.model === 'seedance2' || input.model === 'byteplus') {
+    if (providerTaskId?.startsWith('fal:') || (!providerTaskId && input.model === 'fal')) {
+      urls = requireGenerationResultUrls([await generateFalVideo(input, registerProviderTask, providerTaskId)], expectedResultCount);
+    } else if (input.model === 'seedance2' || input.model === 'byteplus') {
       const generated = await generateSeedance(input, seedanceConfig(input.model, options), registerProviderTask, providerTaskId);
       if (input.returnLastFrame && !generated.lastFrameUrl) {
         throw new IncompleteGenerationResultError(expectedResultCount, 1);
@@ -435,14 +381,14 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'vrouter'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'vrouter', 'fal'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,
       registerDownload,
       registerProviderTask,
     ) => {
-      const input = validate(snapshot.params as VideoRequest);
+      const input = validateSavedVideoRequest(snapshot.params as VideoRequest);
       const name = snapshot.label
         || String(input.name ?? '').trim()
         || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
@@ -465,7 +411,10 @@ export function videoGenerationPlugin(options: VideoOptions): Plugin {
         if (req.method !== 'POST') { sendJson(res, 405, { error: 'method not allowed — use POST' }); return; }
         try {
           const raw = await readJson(req);
-          const input = validate(await materializeVideoReferences(raw));
+          if (raw.model === 'fal' && !raw.falModel) raw.falModel = getKey('FAL_VIDEO_MODEL').trim() || undefined;
+          const input = validateVideoRequest(await materializeVideoReferences(raw));
+          // Persist the resolved choice so settings changes cannot redirect a retry.
+          if (input.model === 'fal') raw.falModel = input.falModel;
           const name = String(input.name ?? '').trim() || `Video · ${(input.prompt || input.multiPrompts?.[0]?.prompt || input.model).slice(0, 36)}`;
           const submitArgs = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== 'operationId'));
           const submission = await createGenerationJob(

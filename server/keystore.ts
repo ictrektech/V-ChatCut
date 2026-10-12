@@ -1,10 +1,8 @@
 // Server-side in-memory API-key store backing the settings UI. Seeded at Vite
 // startup, live-updated by POST /api/keys, and persisted to the active runtime
 // profile's private settings file. Secret values never appear in responses; the
-// browser sees booleans only (keyStatus / caps). Model ids and vendor
-// routing are configuration, not credentials: the explicit NON_SECRET_NAMES whitelist
-// lets keyStatus() echo their raw values (keyStatus().models) so the settings UI can
-// show and edit them.
+// browser sees booleans only (keyStatus / caps). NON_SECRET_NAMES allows model ids
+// and vendor routing in keyStatus().models so the settings UI can edit them.
 import { readFile } from "node:fs/promises";
 import { parse as parseDotenv } from "dotenv";
 import { atomicWriteFile } from "./plugins/project-store-durable.ts";
@@ -17,6 +15,8 @@ import {
   llmProviderConfigNames,
   normalizeLlmProvider,
 } from "../shared/llm-providers.ts";
+import { KEY_NAMES, NON_SECRET_NAMES, type KeyName } from "./keystore-names.ts";
+export { KEY_NAMES, NON_SECRET_NAMES, type KeyName } from "./keystore-names.ts";
 import {
   MODEL_CAPABILITY_OVERRIDES_KEY,
   parseModelCapabilityOverrides,
@@ -24,8 +24,6 @@ import {
   type ModelCapabilityOverride,
 } from "../shared/model-capabilities.ts";
 
-export { KEY_NAMES, NON_SECRET_NAMES, type KeyName } from "./keystore-keys.ts";
-import { KEY_NAMES, NON_SECRET_NAMES, type KeyName } from "./keystore-keys.ts";
 const SETTABLE = new Set<string>(KEY_NAMES);
 
 interface KeystoreState {
@@ -205,7 +203,7 @@ export function computeCaps(): Caps {
       has("MINIMAX_API_KEY") ||
       has("WAVESPEED_API_KEY") ||
       has("BYTEPLUS_API_KEY") ||
-      has("V_ROUTER_IMAGE_MODEL"),
+      has("V_ROUTER_IMAGE_MODEL") || has("FAL_KEY"),
     voice:
       (has("DOUBAO_TTS_APP_ID") && has("DOUBAO_TTS_ACCESS_KEY")) ||
       has("ELEVENLABS_API_KEY") ||
@@ -224,7 +222,7 @@ export function computeCaps(): Caps {
       has("MINIMAX_API_KEY") ||
       has("BYTEPLUS_API_KEY") ||
       has("LLM_OFOX_API_KEY") ||
-      has("V_ROUTER_VIDEO_MODEL"),
+      has("V_ROUTER_VIDEO_MODEL") || has("FAL_KEY"),
     music: has("MUREKA_API_KEY") || has("MINIMAX_API_KEY") || has("ATLASCLOUD_API_KEY") || has("SONILO_API_KEY") || has("V_ROUTER_MUSIC_MODEL"),
     sound: has("ELEVENLABS_API_KEY") || has("SONILO_API_KEY"),
     stock:

@@ -11,6 +11,8 @@ import { extensionStorePlugin } from "./extension-store.ts";
 import { exportPlugin } from "./export.ts";
 import { exportQaPlugin } from "./export-qa.ts";
 import { exportDestinationPlugin } from "./export-destination.ts";
+import { uploadPostPlugin } from "./upload-post.ts";
+import { exportMediaSourcesPlugin } from "./export-media-sources.ts";
 import { exportStagePlugin } from "./export-stage.ts";
 import { uploadPlugin } from "./upload.ts";
 import { mobileUploadPlugin } from "./mobile-upload.ts";
@@ -46,6 +48,7 @@ import { skillExecPlugin } from "./skill-exec.ts";
 import { externalAgentPlugin } from "./external-agent.ts";
 import { codexAgentPlugin } from "./codex-agent.ts";
 import { copilotAgentPlugin } from "./copilot-agent.ts";
+import { claudeCodeAgentPlugin } from "./claude-code-agent.ts";
 import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
@@ -58,6 +61,7 @@ import { installSystemProxy } from '../net.ts';
 import { requestShapeGatePlugin } from './request-shape-gate';
 import { vosAuthPlugin } from './vos-auth.ts';
 import { runtimeInfoPlugin } from './runtime-info.ts';
+import { systemFontsPlugin } from './system-fonts.ts';
 
 export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plugin[] {
   installSystemProxy();
@@ -65,6 +69,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     vosAuthPlugin(),
     requestShapeGatePlugin(),
     runtimeInfoPlugin(),
+    systemFontsPlugin(),
     crossOriginIsolationPlugin(),
     storageLifecyclePlugin(),
     llmProxyPlugin(),
@@ -84,10 +89,13 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     externalAgentPlugin(),
     codexAgentPlugin(),
     copilotAgentPlugin(),
+    claudeCodeAgentPlugin(),
     settingsPlugin(),
     exportStagePlugin(),
     exportPlugin(),
     exportDestinationPlugin(),
+    uploadPostPlugin(),
+    exportMediaSourcesPlugin(),
     exportQaPlugin(),
     uploadMultipartPlugin(),
     uploadPlugin(),
