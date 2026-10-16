@@ -268,6 +268,7 @@ for file in manifest.yml configs.yml routers.yml README.zh-CN.md README.en.md; d
   render_text_file "${SRC_DIR}/${file}" "${STAGE_DIR}/${file}"
 done
 cp "${SRC_DIR}/icon.png" "${STAGE_DIR}/icon.png"
+python3 "${ROOT_DIR}/scripts/resolve_dependencies.py" "${STAGE_DIR}/manifest.yml" --repositories "${ROOT_DIR}/scripts/dependency-releases.json"
 render_compose_file "${SRC_DIR}/docker-compose.yml" "${STAGE_DIR}/docker-compose.yml" "$ENV_FILE"
 
 for file in manifest.yml configs.yml routers.yml docker-compose.yml; do

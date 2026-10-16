@@ -45,6 +45,18 @@ jobs:
           npx tsc -b
           npx tsx desktop/embedded-port.verify.ts
 
+      - name: Install packaging dependencies
+        run: python3 -m pip install 'PyYAML>=6,<7'
+
+      - name: Verify published dependency resolution
+        run: python3 -m unittest discover -s ictrek.app/scripts -p test_dependencies.py
+
+      - name: Connect dependency catalog tunnel
+        env:
+          APPSTORE_IP: ${{ secrets.APPSTORE_IP }}
+          APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
+        run: bash ictrek.app/scripts/appstore_tunnel.sh open
+
       - name: Build pull-mode package
         env:
           FEISHU_SPREADSHEET_TOKEN: Htotsn3oahO1zxt73YMcaB1zn8e
@@ -53,6 +65,12 @@ jobs:
           VERSION="${GITHUB_REF_NAME#vos-v-chatcut-v}"
           PACKAGE_VERSION="$VERSION" ./ictrek.app/scripts/package.sh
           test -f "ictrek.app/dist/v_chatcut_${VERSION}_pull.tar"
+
+      - name: Close dependency catalog tunnel
+        if: always()
+        env:
+          APPSTORE_IP: ${{ secrets.APPSTORE_IP }}
+        run: bash ictrek.app/scripts/appstore_tunnel.sh close
 
       - name: Create release notes
         env:

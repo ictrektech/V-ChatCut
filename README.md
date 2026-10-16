@@ -606,3 +606,6 @@ Third-party components and assets remain subject to their respective licenses.
 4. Open a Pull Request and include screenshots or acceptance evidence for UI or video-behavior changes.
 
 Use [GitHub Issues](https://github.com/0xsline/OpenChatCut/issues) for bug reports and feature requests.
+# V-Scheduler 接入
+
+VOS 包依赖统一应用 `com.ictrek.v-scheduler`，打包时实时解析其最新已发布版本。ICTrek 模型提供方继续通过 `http://v-router:8080/v1` 调用统一应用中的网关，并透传当前 VOS 账户身份；本地模型的资源准入由 V-Scheduler 网关执行，云端模型不占本地资源预约。参见 [应用接入指南](https://github.com/ictrektech/V-Scheduler/blob/main/docs/application-integration.md)。
