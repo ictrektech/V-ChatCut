@@ -135,9 +135,13 @@ export const V_SCHEDULER_MEDIA_PROBES: Record<string, ProbeDef> = {
     run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
     models: (body) => parseVSchedulerModelCatalog(body, 'audio/speech'),
     postCheck: schedulerCatalogError,
-    fieldOptions: async (get) => {
+    fieldOptions: async (get, catalog) => {
       const model = get('V_ROUTER_TTS_MODEL');
-      if (!model) return {} as Record<string, string[]>;
+      // A saved selection may have been removed or become private to another
+      // account. Keep its value, but let the user discover and select a new one.
+      if (!model || !parseVSchedulerModelCatalog(catalog, 'audio/speech').includes(model)) {
+        return { V_ROUTER_TTS_VOICE_ID: [] };
+      }
       const response = await fetch(vSchedulerVoicesUrl(model), { signal: t(), headers: vSchedulerHeaders() });
       const body = await response.text().catch(() => '');
       if (!response.ok) throw new Error(classifyStatus(response.status, body).message);

@@ -29,7 +29,10 @@ try {
   globalThis.fetch = async (url, options) => {
     assert.equal(String(url), 'http://v-scheduler-gateway:8080/api/v1/models');
     seen.push(new Headers(options?.headers).get('Authorization') ?? '');
-    return Response.json({ models: [{ qualified: 'visible/chat', endpoints: ['chat_completions'] }] });
+    return Response.json({ models: [
+      { qualified: 'visible/chat', endpoints: ['chat_completions'] },
+      { qualified: 'visible/tts', endpoints: ['audio/speech'] },
+    ] });
   };
   for (const name of ['alice', 'bob']) {
     await runAsVOSUser({ provider: 'vos-oidc', subject: name, username: name,
@@ -38,10 +41,14 @@ try {
       const result = await runProbe('llm/vrouter', {});
       assert.equal(result.ok, true);
       assert.deepEqual(result.models, ['visible/chat']);
+      const voice = await runProbe('voice/vrouter', {});
+      assert.equal(voice.ok, true, 'a removed saved model must not block discovery');
+      assert.deepEqual(voice.models, ['visible/tts']);
+      assert.deepEqual(voice.fieldOptions, { V_ROUTER_TTS_VOICE_ID: [] });
       for (const [key, value] of Object.entries(saved)) assert.equal(getKey(key as never), value);
     });
   }
-  assert.deepEqual(seen, ['Bearer alice-token', 'Bearer bob-token']);
+  assert.deepEqual(seen, ['Bearer alice-token', 'Bearer alice-token', 'Bearer bob-token', 'Bearer bob-token']);
   assert.equal(schedulerCatalogError('{}') !== null, true);
   assert.equal(schedulerCatalogError('{"models":[]}'), null);
   assert.deepEqual(parseVSchedulerVisionCatalog(JSON.stringify({ models: [
