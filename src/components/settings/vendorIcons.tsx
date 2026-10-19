@@ -38,7 +38,7 @@ import ollamaSvg from '../../../assets/vendor-icons/ollama.svg?raw';
 import lmstudioSvg from '../../../assets/vendor-icons/lmstudio-color.svg?raw';
 import visionSvg from '../../../assets/vendor-icons/vision.svg?raw';
 import ictrekIcon from '../../../assets/vendor-icons/ictrek.png';
-import vRouterIcon from '../../../assets/vendor-icons/v-router.png';
+import vSchedulerIcon from '../../../assets/vendor-icons/v-scheduler.png';
 
 export type VendorId =
   | 'llm' | 'vrouter' | 'ictrek' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference'
@@ -96,7 +96,7 @@ const SVG_ICONS: Partial<Record<VendorId, SvgIcon>> = {
 
 const RASTER_ICONS: Partial<Record<VendorId, string>> = {
   ictrek: ictrekIcon,
-  vrouter: vRouterIcon,
+  vrouter: vSchedulerIcon,
 };
 
 // Official SVG not included / Non-provider brand → monogram

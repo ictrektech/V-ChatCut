@@ -55,7 +55,7 @@ import { agentRunsPlugin } from "../agent-runs/routes.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { mediaSourceImportPlugin } from './media-source-import.ts';
 import { getKey } from "../keystore.ts";
-import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
+import { vSchedulerAccessToken, vSchedulerApiBaseUrl } from '../v-scheduler-client.ts';
 
 import { installSystemProxy } from '../net.ts';
 import { requestShapeGatePlugin } from './request-shape-gate';
@@ -282,8 +282,8 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get soniloApiKey() {
         return getKey("SONILO_API_KEY");
       },
-      get vrouterBaseUrl() { return vRouterApiBaseUrl(); },
-      get vrouterApiKey() { return vRouterAccessToken(); },
+      get vrouterBaseUrl() { return vSchedulerApiBaseUrl(); },
+      get vrouterApiKey() { return vSchedulerAccessToken(); },
       get vrouterModel() { return getKey('V_ROUTER_MUSIC_MODEL'); },
     }),
     videoGenerationPlugin({

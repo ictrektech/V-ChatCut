@@ -17,7 +17,7 @@ Installation requires exactly one profile. VOS checks `arch`, `software: cuda`, 
 
 Only AMD64 and ARM64 frontend images are built. Every ARM64 backend profile reuses the ARM64 frontend image.
 
-Agent, vision, image, video, voice, and transcription features can use the current VOS account's V-Router models. Video settings list only models that declare `videos/generations`; upstream credentials and model configuration remain managed by V-Router.
+Agent, vision, image, video, voice, and transcription features can use the current VOS account's V-Scheduler models. Video settings list only models that declare `videos/generations`; upstream credentials and model configuration remain managed by V-Scheduler.
 
 ## Data
 
@@ -43,3 +43,9 @@ The project dashboard exports and imports `.ccproj` packages containing editable
 ## Performance
 
 CUDA profiles prefer NVIDIA NVENC. When the encoder or driver is unavailable, V-ChatCut falls back to libx264 so the job can still complete at a lower speed.
+
+## V-Scheduler migration
+
+VOS model traffic now uses `http://v-scheduler-gateway:8080`. Settings automatically load the current VOS user's visible models from `/api/v1/models` and filter by declared `endpoints`; Refresh reloads the list without replacing saved choices. Explicit endpoints take precedence; native models with empty endpoint lists use the gateway's declared-capability mapping. Untyped models are excluded. Upstream addresses and credentials remain managed by V-Scheduler.
+
+Existing model/voice selections, preferred providers, projects and user directories are preserved. Persisted `vrouter`, `LLM_VROUTER_*` and `V_ROUTER_*` identifiers remain a compatibility storage format, not a connection to the retired service. Unavailable saved models are retained for explicit reselection; rollback requires no configuration rewrite.

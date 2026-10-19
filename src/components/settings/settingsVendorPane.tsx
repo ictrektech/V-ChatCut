@@ -1,5 +1,5 @@
 // Provider configuration page, field rendering, and connection tests.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { theme, themeAlpha } from '../../theme';
 import { t, useT } from '../../i18n/locale';
 import { VendorIcon } from './vendorIcons';
@@ -81,7 +81,7 @@ export function VendorPane({ page, hint, ctx }: {
     </ClaudeCodeVendorPane>
   );
   if (page.connection === 'xai-oauth') return <XaiOauthVendorPane page={page} hint={hint} ctx={ctx} />;
-  if (page.key === 'llm/vision') return <VisionModelPane />;
+  if (page.key === 'llm/vision') return <VisionModelPane vosMode={ctx.status?.vosMode === true} />;
   if (page.kind === 'local-models') return <LocalModelsPane page={page} fields={page.fields} ctx={ctx} />;
   const on = vendorConfigured(ctx.status, page, ctx.codex.status, ctx.copilot.status, ctx.claudeCode.status);
   return (
@@ -218,6 +218,37 @@ export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ProbeShown | null>(null);
   const shown = result && result.page === page.key ? result : null;
+  const latest = useRef({ page, ctx, t });
+  latest.current = { page, ctx, t };
+  const schedulerPage = page.vendor === 'vrouter';
+  const ready = ctx.status !== null;
+  const voiceModel = page.key === 'voice/vrouter'
+    ? ctx.values.V_ROUTER_TTS_MODEL ?? modelValue(ctx.status, 'V_ROUTER_TTS_MODEL') : '';
+
+  // Fetch as the authenticated user on entry and when the selected TTS model
+  // changes. Discovery fills options only; it never replaces saved selections.
+  useEffect(() => {
+    if (!schedulerPage || !ready) return;
+    let cancelled = false;
+    const current = latest.current;
+    const field = current.page.fields.find((candidate) => candidate.discoverableModel);
+    setBusy(true);
+    setResult(null);
+    if (field) current.ctx.onModelsDiscovered(field.name, []);
+    if (current.page.key === 'voice/vrouter') current.ctx.onModelsDiscovered('V_ROUTER_TTS_VOICE_ID', []);
+    void requestProbe(current.page, current.ctx, current.t).then(({ body }) => {
+      if (cancelled) return;
+      setResult({ page: current.page.key, ok: body.ok, message: current.t(body.message) });
+      if (field) current.ctx.onModelsDiscovered(field.name, body.ok ? body.models ?? [] : []);
+      for (const [name, options] of Object.entries(body.fieldOptions ?? {})) {
+        current.ctx.onModelsDiscovered(name, options);
+      }
+    }).catch((error: unknown) => {
+      if (!cancelled) setResult({ page: current.page.key, ok: false,
+        message: error instanceof Error ? error.message : String(error) });
+    }).finally(() => { if (!cancelled) setBusy(false); });
+    return () => { cancelled = true; };
+  }, [schedulerPage, ready, page.key, voiceModel]);
 
   const test = async (): Promise<void> => {
     setBusy(true); setResult(null);
@@ -247,7 +278,7 @@ export function TestConnectionRow({ page, ctx }: { page: SettingsVendorPage; ctx
     <div style={testRow}>
       <button type="button" onClick={() => { void test(); }} disabled={busy}
         style={{ ...testBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
-        {busy ? t('测试中…') : page.key === 'voice/vrouter' ? t('测试并读取模型与音色')
+        {busy ? t('读取中…') : schedulerPage ? t('刷新模型') : page.key === 'voice/vrouter' ? t('测试并读取模型与音色')
           : discoversModels ? t('测试并读取模型') : isProxy ? t('测试代理连接') : t('测试连接')}
       </button>
       {shown && (

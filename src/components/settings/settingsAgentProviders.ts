@@ -13,7 +13,7 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
     vendor: preset.id as VendorId,
     title: preset.label,
     note: preset.id === 'vrouter'
-      ? '使用当前 VOS 登录账户读取 V-Router 中可见的 public 模型和本账户 private 模型；无需在 V-ChatCut 保存 API Key 或上游地址。'
+      ? '使用当前 VOS 登录账户读取 V-Scheduler 中可见的 public 模型和本账户 private 模型；无需在 V-ChatCut 保存 API Key 或上游地址。'
       : preset.id === 'anthropic'
       ? '内置 Agent 可使用 Anthropic API Key，也可以在下方「Anthropic · Claude Code」页用 Claude 订阅登录（无需 API Key）。'
         + '独立运行的 Claude Code 会话也可以通过「外部 Agent 接入 (MCP)」驱动 OpenChatCut。'
@@ -26,8 +26,8 @@ const llmPage = (preset: (typeof LLM_PROVIDER_PRESETS)[number]): SettingsVendorP
         ? { noteAction: { label: '前往 ai.ictrek.com 注册并申请 Token', href: 'https://ai.ictrek.com' } }
         : {}),
     fields: preset.id === 'vrouter' ? [{
-      name: names.model, label: '模型', kind: 'text', defaultLabel: '从 V-Router 选择',
-      discoverableModel: true, note: '点击测试连接后选择 V-Router 返回的模型。',
+      name: names.model, label: '模型', kind: 'text', defaultLabel: '从 V-Scheduler 选择',
+      discoverableModel: true, note: '自动读取 V-Scheduler 中当前账户可见的模型；可刷新列表，已有选择保持不变。',
     }] : [
       {
         name: names.baseUrl,

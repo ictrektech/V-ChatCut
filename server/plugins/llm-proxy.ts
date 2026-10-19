@@ -10,7 +10,7 @@ import {
 import { resolveLlmProviderConfig } from '../llm-config.ts';
 import { xaiOauthAccessToken } from '../xai-oauth-session.ts';
 import { proxyMiddleware } from '../proxy.ts';
-import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
+import { requireVSchedulerAccessToken, vSchedulerApiBaseUrl } from '../v-scheduler-client.ts';
 
 function keyReader(name: string): string {
   return getKey(name as KeyName);
@@ -23,14 +23,13 @@ export function llmProviderForRequest(req?: IncomingMessage): LlmProvider {
 
 export function llmTarget(req?: IncomingMessage): string {
   const provider = llmProviderForRequest(req);
-  return provider === 'vrouter' ? vRouterApiBaseUrl() : resolveLlmProviderConfig(provider, keyReader).baseUrl;
+  return provider === 'vrouter' ? vSchedulerApiBaseUrl() : resolveLlmProviderConfig(provider, keyReader).baseUrl;
 }
 
 export function llmHeaders(req?: IncomingMessage): Record<string, string> {
   const config = resolveLlmProviderConfig(llmProviderForRequest(req), keyReader);
   if (config.provider === 'vrouter') {
-    const token = vRouterAccessToken();
-    return token ? { authorization: `Bearer ${token}` } : {};
+    return { authorization: `Bearer ${requireVSchedulerAccessToken()}` };
   }
   if (config.provider === 'xai-oauth') {
     // OAuth requests only trust the active in-memory session. API-key accounts
@@ -48,6 +47,9 @@ export function llmHeaders(req?: IncomingMessage): Record<string, string> {
 export function llmErrorMessage(status: number, req?: IncomingMessage): string {
   const provider = llmProviderForRequest(req);
   const label = llmProviderPreset(provider).label;
+  if (provider === 'vrouter' && (status === 401 || status === 403)) {
+    return 'V-Scheduler 鉴权失败。请重新登录 VOS，并检查当前账户的模型访问权限。';
+  }
   if (provider === 'xai-oauth' && (status === 401 || status === 403)) {
     return status === 403
       ? 'xAI 拒绝了订阅会话的 API 访问（当前订阅档位可能未开放）。可升级订阅，或改在“设置 → Agent 模型 → xAI Grok”页配置 API Key 使用。'

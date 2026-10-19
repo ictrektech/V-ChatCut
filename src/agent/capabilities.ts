@@ -66,7 +66,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'WaveSpeed', arg: 'wavespeed', argKey: 'model', need: [['WAVESPEED_API_KEY']] },
     { label: 'BytePlus', arg: 'byteplus', argKey: 'model', need: [['BYTEPLUS_API_KEY']] },
     { label: 'xAI Grok', arg: 'grok-imagine', argKey: 'model', need: [['LLM_XAI_OAUTH_API_KEY'], ['LLM_XAI_API_KEY']] },
-    { label: 'V-Router', arg: 'vrouter', argKey: 'model', need: [['V_ROUTER_IMAGE_MODEL']] },
+    { label: 'V-Scheduler', arg: 'vrouter', argKey: 'model', need: [['V_ROUTER_IMAGE_MODEL']] },
   ],
   voice: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
@@ -79,10 +79,10 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Gemini', arg: 'gemini', argKey: 'provider', need: [['GEMINI_API_KEY']] },
     { label: 'Mistral Voxtral', arg: 'mistral', argKey: 'provider', need: [['LLM_MISTRAL_API_KEY']] },
     { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
-    { label: 'V-Router', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_TTS_MODEL']] },
+    { label: 'V-Scheduler', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_TTS_MODEL']] },
   ],
   video: [
-    { label: 'V-Router', arg: 'vrouter', argKey: 'model', need: [['V_ROUTER_VIDEO_MODEL']] },
+    { label: 'V-Scheduler', arg: 'vrouter', argKey: 'model', need: [['V_ROUTER_VIDEO_MODEL']] },
     { label: 'OFox', arg: 'ofox', argKey: 'model', need: [['LLM_OFOX_API_KEY']] },
     { label: 'Fal.ai', arg: 'fal', argKey: 'model', need: [['FAL_KEY']] },
     { label: 'Seedance', arg: 'seedance2', argKey: 'model', need: [['SEEDANCE_API_KEY']] },
@@ -96,7 +96,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'MiniMax', arg: 'minimax', argKey: 'provider', need: [['MINIMAX_API_KEY']] },
     { label: 'Atlas Cloud', arg: 'atlas', argKey: 'provider', need: [['ATLASCLOUD_API_KEY']] },
     { label: 'Sonilo', arg: 'sonilo', argKey: 'provider', need: [['SONILO_API_KEY']] },
-    { label: 'V-Router', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_MUSIC_MODEL']] },
+    { label: 'V-Scheduler', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_MUSIC_MODEL']] },
   ],
   sound: [
     { label: 'ElevenLabs', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
@@ -117,7 +117,7 @@ const CAP_PROVIDERS: Partial<Record<CapabilityKey, ProviderRow[]>> = {
     { label: 'Groq', arg: 'groq', argKey: 'provider', need: [['GROQ_API_KEY']] },
     { label: 'ElevenLabs Scribe', arg: 'elevenlabs', argKey: 'provider', need: [['ELEVENLABS_API_KEY']] },
     { label: 'Cartesia', arg: 'cartesia', argKey: 'provider', need: [['CARTESIA_API_KEY']] },
-    { label: 'V-Router', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_TRANSCRIPTION_MODEL']] },
+    { label: 'V-Scheduler', arg: 'vrouter', argKey: 'provider', need: [['V_ROUTER_TRANSCRIPTION_MODEL']] },
   ],
 };
 

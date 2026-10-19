@@ -109,7 +109,7 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
     { value: 'gemini', label: 'Google Gemini' },
     { value: 'mistral', label: 'Mistral Voxtral' },
     { value: 'cartesia', label: 'Cartesia' },
-    { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
+    { value: 'vrouter', label: 'V-Scheduler · VOS 账户模型' },
   ]),
   vendors: [
     {
@@ -162,10 +162,10 @@ export const VOICE_SETTINGS_GROUP: SettingsGroup = {
       ],
     },
     {
-      key: 'voice/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
-      note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。',
+      key: 'voice/vrouter', vendor: 'vrouter', title: 'V-Scheduler · VOS 账户模型',
+      note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Scheduler 中配置。',
       fields: [
-        modelText('V_ROUTER_TTS_MODEL', '配音模型', '从 V-Router 选择',
+        modelText('V_ROUTER_TTS_MODEL', '配音模型', '从 V-Scheduler 选择',
           '测试连接后选择声明 audio/speech 的模型。', true),
         modelText('V_ROUTER_TTS_VOICE_ID', '默认音色', '先选择模型',
           '选好模型后再次测试，即可读取该模型支持的音色。', true),
@@ -214,13 +214,13 @@ export const TRANSCRIPTION_SETTINGS_GROUP: SettingsGroup = {
     { value: 'groq', label: 'Groq（云端）' },
     { value: 'elevenlabs', label: 'ElevenLabs Scribe（云端）' },
     { value: 'cartesia', label: 'Cartesia（云端）' },
-    { value: 'vrouter', label: 'V-Router（VOS 账户）' },
+    { value: 'vrouter', label: 'V-Scheduler（VOS 账户）' },
   ], 'AssemblyAI（默认）'),
   vendors: [
     transcriptionPage('assemblyai', 'assemblyai', 'AssemblyAI', [secret('ASSEMBLYAI_API_KEY', 'API Key')]),
     localAsrPage,
-    transcriptionPage('vrouter', 'vrouter', 'V-Router · VOS 账户模型', [
-      modelText('V_ROUTER_TRANSCRIPTION_MODEL', '转写模型', '从 V-Router 选择',
+    transcriptionPage('vrouter', 'vrouter', 'V-Scheduler · VOS 账户模型', [
+      modelText('V_ROUTER_TRANSCRIPTION_MODEL', '转写模型', '从 V-Scheduler 选择',
         '使用当前 VOS 登录账户鉴权；测试连接后选择声明 audio/transcriptions 的模型。', true),
     ]),
     transcriptionPage('openai', 'openai', 'OpenAI', [

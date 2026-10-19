@@ -18,6 +18,7 @@ import {
 import { listVisionModels } from '../../../shared/model-capabilities';
 import type { LlmProvider } from '../../../shared/llm-providers';
 import { VendorIcon } from './vendorIcons';
+import { useSchedulerVisionModels } from './useSchedulerVisionModels';
 
 // Data constants: keep Chinese originals and translate at render time via
 // t(mode.label) / t(mode.hint) so a language switch re-renders correctly.
@@ -28,7 +29,7 @@ const MODES: readonly { value: VisionModelMode; label: string; hint: string }[] 
 ];
 
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
-  vrouter: 'V-Router',
+  vrouter: 'V-Scheduler',
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   ictrek: 'ICTrek',
@@ -53,13 +54,17 @@ const PROVIDER_LABELS: Record<LlmProvider, string> = {
   lmstudio: 'LM Studio',
 };
 
-export function VisionModelPane(): React.JSX.Element {
+export function VisionModelPane({ vosMode = false }: { vosMode?: boolean }): React.JSX.Element {
   const t = useT();
+  const scheduler = useSchedulerVisionModels(vosMode);
+  const modelsFor = (provider: LlmProvider, configuredModel?: string) => provider === 'vrouter'
+    ? scheduler.models : listVisionModels(provider, configuredModel);
   const config = useSyncExternalStore(subscribeVisionModelConfig, getVisionModelConfig, getVisionModelConfig);
   const snapshot = useSyncExternalStore(subscribeAgentModels, getAgentModelSnapshot, getAgentModelSnapshot);
   // Providers that are configured (API key present) and offer vision models.
   const providerChoices = useMemo(() => {
     const seen = new Map<LlmProvider, { label: string; configuredModel: string }>();
+    if (vosMode) seen.set('vrouter', { label: 'V-Scheduler', configuredModel: '' });
     for (const choice of snapshot.choices) {
       if (choice.backend !== 'api') continue;
       const existing = seen.get(choice.provider);
@@ -68,9 +73,9 @@ export function VisionModelPane(): React.JSX.Element {
       }
     }
     return [...seen.entries()]
-      .filter(([provider, entry]) => listVisionModels(provider, entry.configuredModel).length > 0)
+      .filter(([provider, entry]) => (provider === 'vrouter' ? scheduler.models : listVisionModels(provider, entry.configuredModel)).length > 0)
       .map(([provider, entry]) => ({ provider, ...entry }));
-  }, [snapshot.choices]);
+  }, [snapshot.choices, vosMode, scheduler.models]);
 
   const selectedProvider = providerChoices.find((p) => p.provider === config.provider)?.provider
     ?? providerChoices[0]?.provider
@@ -78,8 +83,8 @@ export function VisionModelPane(): React.JSX.Element {
   const models = useMemo(() => {
     if (!selectedProvider) return [];
     const entry = providerChoices.find((p) => p.provider === selectedProvider);
-    return listVisionModels(selectedProvider, entry?.configuredModel);
-  }, [selectedProvider, providerChoices]);
+    return selectedProvider === 'vrouter' ? scheduler.models : listVisionModels(selectedProvider, entry?.configuredModel);
+  }, [selectedProvider, providerChoices, scheduler.models]);
   const selectedModel = config.mode === 'custom' && selectedProvider === config.provider
     ? (models.includes(config.model ?? '') ? config.model! : '')
     : '';
@@ -88,7 +93,7 @@ export function VisionModelPane(): React.JSX.Element {
     if (mode === 'custom') {
       const firstProvider = providerChoices[0];
       if (!firstProvider) return;
-      const firstModels = listVisionModels(firstProvider.provider, firstProvider.configuredModel);
+      const firstModels = modelsFor(firstProvider.provider, firstProvider.configuredModel);
       if (!firstModels.length) return;
       setVisionModelConfig({
         mode,
@@ -102,7 +107,7 @@ export function VisionModelPane(): React.JSX.Element {
   };
   const onPickProvider = (provider: LlmProvider): void => {
     const entry = providerChoices.find((p) => p.provider === provider);
-    const first = listVisionModels(provider, entry?.configuredModel)[0];
+    const first = modelsFor(provider, entry?.configuredModel)[0];
     if (!first) return;
     setVisionModelConfig({ mode: 'custom', provider, model: first, openAiApiMode: null });
   };
@@ -113,6 +118,14 @@ export function VisionModelPane(): React.JSX.Element {
 
   return (
     <div style={pane}>
+      {vosMode && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button type="button" disabled={scheduler.busy} onClick={scheduler.refresh}>
+          {scheduler.busy ? t('读取中…') : t('刷新模型')}
+        </button>
+        <span style={{ color: scheduler.error ? theme.textDim : theme.text, fontSize: 11 }}>
+          {scheduler.error || `V-Scheduler · ${scheduler.models.length}`}
+        </span>
+      </div>}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <VendorIcon vendor="vision" size={18} />

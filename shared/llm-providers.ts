@@ -16,10 +16,11 @@ interface LlmProviderPreset {
 
 export const LLM_PROVIDER_PRESETS = [
   {
+    // Persisted provider ID retained for existing user settings and project history.
     id: 'vrouter',
-    label: 'V-Router · VOS 账户模型',
+    label: 'V-Scheduler · VOS 账户模型',
     protocol: 'openai-compatible',
-    baseUrl: 'http://v-router:8080/v1',
+    baseUrl: 'http://v-scheduler-gateway:8080/v1',
     defaultModel: '',
   },
   {

@@ -170,7 +170,7 @@ export function musicGenerationPlugin(options: MusicOptions): Plugin {
             throw new Error('Sonilo is not configured. Set SONILO_API_KEY in .env.local or 设置面板.');
           }
           if (input.provider === 'vrouter' && (!options.vrouterApiKey || !options.vrouterModel)) {
-            throw new Error('V-Router music is not configured. Sign in to VOS and select a V-Router music model in 设置.');
+            throw new Error('V-Scheduler music is not configured. Sign in to VOS and select a V-Scheduler music model in 设置.');
           }
           // Sonilo has no client-selected model: /v1 routes to the latest server-side.
           const model = input.provider === 'minimax' ? options.minimaxModel

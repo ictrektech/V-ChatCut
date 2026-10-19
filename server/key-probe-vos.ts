@@ -1,5 +1,5 @@
 import { classifyStatus } from './key-probe-result.ts';
-import { vRouterHeaders, vRouterModelCatalogUrl, vRouterVoicesUrl } from './v-router-client.ts';
+import { vSchedulerHeaders, vSchedulerModelCatalogUrl, vSchedulerVoicesUrl } from './v-scheduler-client.ts';
 import type { KeyName } from './keystore.ts';
 import type { ProbeDef } from './key-probes.ts';
 import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
@@ -9,19 +9,56 @@ import { fetchWithProxy } from './key-probe-url.ts';
 type Get = (name: KeyName) => string;
 const t = (): AbortSignal => AbortSignal.timeout(PROBE_TIMEOUT_MS);
 
-export function parseVRouterModelCatalog(bodyText: string, endpoint?: string | readonly string[]): string[] {
+// Mirrors the unified gateway's registry::supports fallback for models whose
+// native backend supplies capabilities but no explicit endpoint list.
+const SCHEDULER_ENDPOINT_CAPABILITIES: Record<string, readonly string[]> = {
+  chat_completions: ['chat', 'completion', 'completions', 'generate', 'generation', 'tools', 'thinking'],
+  'images/generations': ['image', 'images', 'image_generation'],
+  'videos/generations': ['video', 'videos', 'video_generation'],
+  'audio/speech': ['tts', 'speech'],
+  'audio/transcriptions': ['asr', 'transcription', 'transcriptions'],
+  'audio/music/generations': ['music', 'text-to-music', 'instrumental'],
+};
+
+export function parseVSchedulerModelCatalog(bodyText: string, endpoint?: string | readonly string[]): string[] {
   try {
-    const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; endpoints?: unknown }> };
+    const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; endpoints?: unknown; capabilities?: unknown }> };
     const wanted = endpoint == null ? null : Array.isArray(endpoint) ? endpoint : [endpoint];
     return [...new Set((body.models ?? []).flatMap((row) => {
       const endpoints = Array.isArray(row.endpoints) ? row.endpoints : [];
-      if (wanted && endpoints.length && !wanted.some((one) => endpoints.includes(one))) return [];
+      // Explicit endpoints take precedence over capabilities. Never infer
+      // support from a model name or an untyped legacy row.
+      const normalize = (value: unknown): string => typeof value === 'string'
+        ? value.trim().replace(/^\/?v1\//, '').replace(/^\//, '').replace('chat/completions', 'chat_completions') : '';
+      const capabilities = Array.isArray(row.capabilities) ? row.capabilities : [];
+      if (wanted && !wanted.some((one) => endpoints.length
+        ? endpoints.some((value) => normalize(value) === normalize(one))
+        : (SCHEDULER_ENDPOINT_CAPABILITIES[normalize(one)] ?? []).some((capability) =>
+          capabilities.some((value) => typeof value === 'string' && value.toLowerCase() === capability)))) return [];
       return typeof row.qualified === 'string' && row.qualified.trim() ? [row.qualified.trim()] : [];
     }))].sort((a, b) => a.localeCompare(b));
   } catch { return []; }
 }
 
-export function parseVRouterVoices(bodyText: string): string[] {
+export function schedulerCatalogError(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as { models?: unknown };
+    return Array.isArray(body?.models) ? null : 'V-Scheduler 模型目录格式无效，请检查服务版本';
+  } catch {
+    return 'V-Scheduler 模型目录格式无效，请检查服务版本';
+  }
+}
+
+export function parseVSchedulerVisionCatalog(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { models: Array<{ qualified: string; capabilities?: string[] }> };
+    const chat = new Set(parseVSchedulerModelCatalog(bodyText, 'chat_completions'));
+    return [...new Set(body.models.filter((row) => chat.has(row.qualified)
+      && row.capabilities?.includes('vision')).map((row) => row.qualified))].sort();
+  } catch { return []; }
+}
+
+export function parseVSchedulerVoices(bodyText: string): string[] {
   try {
     const body = JSON.parse(bodyText) as { voices?: Array<{ id?: unknown }> };
     return [...new Set((body.voices ?? [])
@@ -92,38 +129,43 @@ export const immichProbe: ProbeDef = {
 };
 
 
-export const V_ROUTER_MEDIA_PROBES: Record<string, ProbeDef> = {
+export const V_SCHEDULER_MEDIA_PROBES: Record<string, ProbeDef> = {
   'voice/vrouter': {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, 'audio/speech'),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, 'audio/speech'),
+    postCheck: schedulerCatalogError,
     fieldOptions: async (get) => {
       const model = get('V_ROUTER_TTS_MODEL');
       if (!model) return {} as Record<string, string[]>;
-      const response = await fetch(vRouterVoicesUrl(model), { signal: t(), headers: vRouterHeaders() });
+      const response = await fetch(vSchedulerVoicesUrl(model), { signal: t(), headers: vSchedulerHeaders() });
       const body = await response.text().catch(() => '');
       if (!response.ok) throw new Error(classifyStatus(response.status, body).message);
-      return { V_ROUTER_TTS_VOICE_ID: parseVRouterVoices(body) };
+      return { V_ROUTER_TTS_VOICE_ID: parseVSchedulerVoices(body) };
     },
   },
   'image/vrouter': {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, 'images/generations'),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, 'images/generations'),
+    postCheck: schedulerCatalogError,
   },
   'transcription/vrouter': {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, 'audio/transcriptions'),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, 'audio/transcriptions'),
+    postCheck: schedulerCatalogError,
   },
   'video/vrouter': {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, 'videos/generations'),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, 'videos/generations'),
+    postCheck: schedulerCatalogError,
   },
   'music/vrouter': {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, 'audio/music/generations'),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, 'audio/music/generations'),
+    postCheck: schedulerCatalogError,
   },
 };

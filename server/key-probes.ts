@@ -18,11 +18,11 @@ import {
   protocolForProvider,
   type LlmProvider,
 } from '../shared/llm-providers.ts';
-import { webdavProbe, immichProbe, V_ROUTER_MEDIA_PROBES, parseVRouterModelCatalog } from './key-probe-vos.ts';
-export { parseVRouterModelCatalog, parseVRouterVoices } from './key-probe-vos.ts';
+import { webdavProbe, immichProbe, V_SCHEDULER_MEDIA_PROBES, parseVSchedulerModelCatalog, parseVSchedulerVisionCatalog, schedulerCatalogError } from './key-probe-vos.ts';
+export { parseVSchedulerModelCatalog, parseVSchedulerVoices } from './key-probe-vos.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
-import { vRouterHeaders, vRouterModelCatalogUrl } from './v-router-client.ts';
+import { vSchedulerHeaders, vSchedulerModelCatalogUrl } from './v-scheduler-client.ts';
 import {
   classifyStatus,
   networkMessage,
@@ -54,11 +54,11 @@ export interface ProbeDef {
 const t = (): AbortSignal => AbortSignal.timeout(PROBE_TIMEOUT_MS);
 const base = (get: Get, name: KeyName, def: string): string => (get(name) || def).replace(/\/+$/, '');
 const bearer = (key: string): Record<string, string> => ({ Authorization: `Bearer ${key}` });
-// V-ChatCut speaks Chat Completions to V-Router. V-Router merges v-voice audio
+// V-ChatCut speaks Chat Completions to V-Scheduler. V-Scheduler merges v-voice audio
 // models (ASR/TTS/speaker) into the shared catalog; those only declare audio/*
 // endpoints and would 400 at routing time, so the LLM picker keeps exactly the
-// models /v1/chat/completions accepts (models without endpoints stay listed).
-const VROUTER_CHAT_ENDPOINTS = ['chat_completions'] as const;
+// models that declare chat endpoints or the native gateway capability fallback.
+const V_SCHEDULER_CHAT_ENDPOINTS = ['chat_completions'] as const;
 
 function llmProbe(provider: LlmProvider): ProbeDef {
   const names = llmProviderConfigNames(provider);
@@ -68,8 +68,10 @@ function llmProbe(provider: LlmProvider): ProbeDef {
   const isLocal = isLocalLlmProvider(provider);
   if (provider === 'vrouter') return {
     needs: [[]],
-    run: () => fetch(vRouterModelCatalogUrl(), { signal: t(), headers: vRouterHeaders() }),
-    models: (body) => parseVRouterModelCatalog(body, VROUTER_CHAT_ENDPOINTS),
+    run: () => fetch(vSchedulerModelCatalogUrl(), { signal: t(), headers: vSchedulerHeaders() }),
+    models: (body) => parseVSchedulerModelCatalog(body, V_SCHEDULER_CHAT_ENDPOINTS),
+    postCheck: schedulerCatalogError,
+    fieldOptions: async (_get, body) => ({ V_SCHEDULER_VISION_MODELS: parseVSchedulerVisionCatalog(body) }),
   };
   return {
     needs: isLocal ? [[]] : [[apiKeyName]],
@@ -238,7 +240,7 @@ const cheaperInferenceProbe: ProbeDef = {
 
 /** page key (same name as the vendor page key of settingsSchema) → detection definition.*/
 export const PROBES: Record<string, ProbeDef> = {
-  ...V_ROUTER_MEDIA_PROBES,
+  ...V_SCHEDULER_MEDIA_PROBES,
   ...Object.fromEntries(LLM_PROVIDER_PRESETS.map((preset) => [
     `llm/${preset.id}`,
     llmProbe(preset.id),
@@ -459,7 +461,8 @@ export async function runProbe(page: string, overrides: Record<string, unknown>)
       const models = probe.models?.(bodyText);
       const fieldOptions = await probe.fieldOptions?.(get, bodyText);
       const modelText = models
-        ? models.length > 0 ? ` · 已读取 ${models.length} 个模型` : ' · 接口未返回模型列表'
+        ? models.length > 0 ? ` · 已读取 ${models.length} 个模型`
+          : page.endsWith('/vrouter') ? ' · V-Scheduler 当前账户没有匹配此功能的可见模型' : ' · 接口未返回模型列表'
         : '';
       const okText = probe.okText?.(bodyText) ?? '连接成功 · 鉴权通过';
       return {

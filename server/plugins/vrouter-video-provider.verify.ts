@@ -25,12 +25,12 @@ try {
     async (provider, id) => { registered.push(`${provider}:${id}`); },
   ));
   assert.equal(result, 'https://media.invalid/result.mp4');
-  assert.equal(calls[0].url, 'http://v-router:8080/v1/videos/generations');
+  assert.equal(calls[0].url, 'http://v-scheduler-gateway:8080/v1/videos/generations');
   assert.equal(calls[0].headers.get('Authorization'), 'Bearer vos-token');
   assert.deepEqual(JSON.parse(calls[0].body ?? '{}'), {
     model: 'image-studio/wan21', prompt: 'paper airplane', duration: 5, aspect_ratio: '16:9', resolution: '720p',
   });
-  assert.equal(calls[1].url, 'http://v-router:8080/v1/videos/task%2F1');
+  assert.equal(calls[1].url, 'http://v-scheduler-gateway:8080/v1/videos/task%2F1');
   assert.equal(calls[1].headers.get('X-VRouter-Upstream'), 'image-studio');
   assert.equal(registered.length, 1);
 } finally {

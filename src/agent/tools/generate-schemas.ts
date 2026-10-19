@@ -36,13 +36,13 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_voice',
-    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, Cartesia, or V-Router. Creates a media-pool asset only; it does not place or replace timeline items. V-Router can use the default voice saved in Settings.',
+    description: 'Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, Cartesia, or V-Scheduler. Creates a media-pool asset only; it does not place or replace timeline items. V-Scheduler can use the default voice saved in Settings.',
     input_schema: {
       type: 'object',
       properties: {
         provider: { type: 'string', enum: ['elevenlabs', 'doubao', 'minimax', 'inworld', 'fishaudio', 'speechify', 'openai', 'gemini', 'mistral', 'cartesia', 'vrouter'], description: 'Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable.' },
         text: { type: 'string', minLength: 1, description: 'Text to synthesize.' },
-        voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. May be empty for V-Router when Settings has a default voice, or for MiniMax timbreWeights mixing. Do not invent a preset or reuse an ID from another provider.' },
+        voiceId: { type: 'string', description: 'Concrete provider-specific voice ID confirmed by the user. May be empty for V-Scheduler when Settings has a default voice, or for MiniMax timbreWeights mixing. Do not invent a preset or reuse an ID from another provider.' },
         modelId: { type: 'string', description: 'ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia only. Omit to use the configured model.' },
         stability: { type: 'number', minimum: 0, maximum: 1, description: 'ElevenLabs only. Defaults to 0.5.' },
         speed: { type: 'number', minimum: 0.5, maximum: 2, description: 'ElevenLabs (0.7–1.2), MiniMax (0.5–2), OpenAI, or Cartesia only. Defaults to 1; provider/model support is validated server-side.' },
@@ -111,11 +111,11 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_music',
-    description: 'Submit a Mureka, MiniMax, Atlas Cloud, Sonilo, or V-Router music job. V-Router uses the selected V-Music model for text-to-music and passes generation errors through. Results are saved to the media pool.',
+    description: 'Submit a Mureka, MiniMax, Atlas Cloud, Sonilo, or V-Scheduler music job. V-Scheduler uses the selected V-Music model for text-to-music and passes generation errors through. Results are saved to the media pool.',
     input_schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', maxLength: 4000, description: 'Style/control prompt. V-Router/V-Music accepts up to 4000 characters; other provider-specific limits are validated.' },
+        prompt: { type: 'string', maxLength: 4000, description: 'Style/control prompt. V-Scheduler/V-Music accepts up to 4000 characters; other provider-specific limits are validated.' },
         provider: { type: 'string', enum: ['mureka', 'minimax', 'atlas', 'sonilo', 'vrouter'], description: 'Defaults to mureka.' },
         mode: { type: 'string', enum: ['instrumental', 'song', 'prompt-song', 'soundtrack', 'track', 't2m', 'cover', 'v2m'], description: 'Mureka: instrumental/song/prompt-song/soundtrack/track. MiniMax: t2m/cover. Atlas Cloud: t2m. Sonilo: v2m (video-to-music).' },
         lyrics: { type: 'string', maxLength: 5000, description: 'Mureka song/track or MiniMax t2m/cover lyrics. Provider-specific limits are validated.' },
@@ -124,12 +124,12 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
         sampleRate: { type: 'integer', description: 'MiniMax or Atlas Cloud only. One of 16000/24000/32000/44100; default 44100.' },
         bitrate: { type: 'integer', description: 'MiniMax or Atlas Cloud only. One of 32000/64000/128000/256000; default 256000.' },
         audioFormat: { type: 'string', enum: ['mp3', 'wav', 'pcm', 'flac'], description: 'MiniMax/Atlas Cloud: mp3/wav/pcm. Mureka: mp3/wav/flac. Default mp3.' },
-        duration: { type: 'number', minimum: 10, description: 'V-Router/V-Music only. Duration in seconds; defaults to 30 and is capped by the selected model/service.' },
-        negativePrompt: { type: 'string', maxLength: 4000, description: 'V-Router/V-Music only. Content to avoid.' },
-        seed: { type: 'integer', description: 'V-Router/V-Music only. Reproducibility seed.' },
-        bpm: { type: 'integer', minimum: 20, maximum: 300, description: 'V-Router/V-Music only. Target tempo.' },
-        key: { type: 'string', description: 'V-Router/V-Music only. Musical key, when supported by the selected model.' },
-        timeSignature: { type: 'string', description: 'V-Router/V-Music only. Meter such as 4/4, when supported by the selected model.' },
+        duration: { type: 'number', minimum: 10, description: 'V-Scheduler/V-Music only. Duration in seconds; defaults to 30 and is capped by the selected model/service.' },
+        negativePrompt: { type: 'string', maxLength: 4000, description: 'V-Scheduler/V-Music only. Content to avoid.' },
+        seed: { type: 'integer', description: 'V-Scheduler/V-Music only. Reproducibility seed.' },
+        bpm: { type: 'integer', minimum: 20, maximum: 300, description: 'V-Scheduler/V-Music only. Target tempo.' },
+        key: { type: 'string', description: 'V-Scheduler/V-Music only. Musical key, when supported by the selected model.' },
+        timeSignature: { type: 'string', description: 'V-Scheduler/V-Music only. Meter such as 4/4, when supported by the selected model.' },
         referenceAssetId: { type: 'string', description: 'MiniMax cover only. Project audio asset id; mutually exclusive with coverFeatureId.' },
         coverFeatureId: { type: 'string', description: 'MiniMax cover only. Preprocessed feature ID; requires lyrics and excludes referenceAssetId.' },
         count: { type: 'integer', minimum: 1, maximum: 3, description: 'Mureka only. Result count; defaults to 1 (official API default is 2).' },
@@ -154,7 +154,7 @@ export const GENERATE_TOOL_SCHEMAS: AgentToolSchema[] = [
   },
   {
     name: 'submit_video',
-    description: 'Submit a V-Router, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
+    description: 'Submit a V-Scheduler, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.',
     input_schema: {
       type: 'object',
       properties: {

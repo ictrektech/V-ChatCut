@@ -90,7 +90,7 @@
     "verify:extract-audio": "tsx server/plugins/extract-audio.verify.ts",
     "verify:fal": "node --import tsx server/plugins/fal-catalog-input.verify.ts && node --import tsx server/plugins/fal-provider.verify.ts && node --import tsx server/plugins/fal-client.verify.ts && node --import tsx server/plugins/fal-routing.verify.ts",
     "verify:system-fonts": "tsx server/plugins/system-fonts.verify.ts && tsx --tsconfig tsconfig.app.json src/fonts/systemFonts.verify.ts && tsx --tsconfig tsconfig.app.json src/editor/TimelineGraphicLayers.verify.ts",
-    "verify:vos-isolation": "tsx server/vos-user-isolation.verify.ts"
+    "verify:vos-isolation": "tsx server/vos-user-isolation.verify.ts && tsx server/v-scheduler-client.verify.ts"
   },
   "dependencies": {
     "@ai-sdk/alibaba": "^2.0.16",

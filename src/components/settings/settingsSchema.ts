@@ -108,12 +108,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'wavespeed', label: 'WaveSpeed' },
           { value: 'byteplus', label: 'BytePlus · Seedream' },
           { value: 'grok-imagine', label: 'xAI Grok Imagine' },
-          { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
+          { value: 'vrouter', label: 'V-Scheduler · VOS 账户模型' },
         ]),
         vendors: [
-          { key: 'image/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
-            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。',
-            fields: [modelText('V_ROUTER_IMAGE_MODEL', '生图模型', '从 V-Router 选择',
+          { key: 'image/vrouter', vendor: 'vrouter', title: 'V-Scheduler · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Scheduler 中配置。',
+            fields: [modelText('V_ROUTER_IMAGE_MODEL', '生图模型', '从 V-Scheduler 选择',
               '测试连接后选择声明 images/generations 的模型。', true)] },
           { key: 'image/openai', vendor: 'openai', title: 'OpenAI', fields: [
             secret('IMAGE_API_KEY', 'API Key（gpt-image）'),
@@ -150,7 +150,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
           { value: 'ofox', label: 'OFox · 多模型' },
-          { value: 'vrouter', label: 'V-Router · VOS 账户模型' },
+          { value: 'vrouter', label: 'V-Scheduler · VOS 账户模型' },
         ]),
         vendors: [
           falPage('video'),
@@ -180,10 +180,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               modelText('OFOX_VIDEO_MODEL', '视频模型', 'bytedance/seedance-2.0-fast',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
-          { key: 'video/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
-            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Router 中配置。当前接入文生视频，参数能力由所选上游模型决定。',
+          { key: 'video/vrouter', vendor: 'vrouter', title: 'V-Scheduler · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权；模型及上游凭据只在 V-Scheduler 中配置。当前接入文生视频，参数能力由所选上游模型决定。',
             fields: [
-              modelText('V_ROUTER_VIDEO_MODEL', '视频模型', '从 V-Router 选择',
+              modelText('V_ROUTER_VIDEO_MODEL', '视频模型', '从 V-Scheduler 选择',
                 '测试连接后选择声明 videos/generations 的模型。', true),
             ] },
         ] },
@@ -193,7 +193,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'minimax', label: 'MiniMax' },
           { value: 'atlas', label: 'Atlas Cloud' },
           { value: 'sonilo', label: 'Sonilo' },
-          { value: 'vrouter', label: 'V-Router' },
+          { value: 'vrouter', label: 'V-Scheduler' },
         ]),
         vendors: [
           { key: 'music/mureka', vendor: 'mureka', title: 'Mureka', fields: [
@@ -216,10 +216,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               secret('SONILO_API_KEY', 'API Key'),
               text('SONILO_BASE_URL', 'Base URL', '默认 https://api.sonilo.com'),
             ] },
-          { key: 'music/vrouter', vendor: 'vrouter', title: 'V-Router · VOS 账户模型',
-            note: '使用当前 VOS 登录账户鉴权，通过 V-Router 调用已安装的 V-Music。生成时可设置时长、负面提示词、随机种子、BPM、调性、拍号及 WAV/FLAC 格式。',
+          { key: 'music/vrouter', vendor: 'vrouter', title: 'V-Scheduler · VOS 账户模型',
+            note: '使用当前 VOS 登录账户鉴权，通过 V-Scheduler 调用已安装的 V-Music。生成时可设置时长、负面提示词、随机种子、BPM、调性、拍号及 WAV/FLAC 格式。',
             fields: [
-              modelText('V_ROUTER_MUSIC_MODEL', '音乐模型', '从 V-Router 选择',
+              modelText('V_ROUTER_MUSIC_MODEL', '音乐模型', '从 V-Scheduler 选择',
                 '测试连接后选择声明 audio/music/generations 的模型。', true),
             ] },
         ] },

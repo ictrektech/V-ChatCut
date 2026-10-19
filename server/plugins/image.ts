@@ -8,7 +8,7 @@ import { extname, join } from 'node:path';
 import type { Plugin } from 'vite';
 import { generateImage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
-import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
+import { vSchedulerAccessToken, vSchedulerApiBaseUrl } from '../v-scheduler-client.ts';
 import { getKey } from '../keystore.ts';
 
 import { uploadDir } from '../media-dir.ts';
@@ -397,10 +397,10 @@ export function imageGenerationPlugin(options: ImagePluginOptions): Plugin {
             : model === 'fal' ? [0, 0] : dimensions(aspectRatio!, imageSize);
           let images: ProviderImage[];
           if (model === 'vrouter') {
-            const token = vRouterAccessToken();
+            const token = vSchedulerAccessToken();
             const routedModel = getKey('V_ROUTER_IMAGE_MODEL');
-            if (!token || !routedModel) throw new Error('V-Router image model requires a VOS login and selected model');
-            images = await callProvider(vRouterApiBaseUrl(), token, {
+            if (!token || !routedModel) throw new Error('V-Scheduler image model requires a VOS login and selected model');
+            images = await callProvider(vSchedulerApiBaseUrl(), token, {
               model: routedModel, prompt, quality, count, size: `${width}x${height}`, referencePaths, maskPath,
               background, moderation, inputFidelity, outputFormat, outputCompression,
             });

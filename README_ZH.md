@@ -313,7 +313,7 @@ npm run desktop:dev
 
 VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个互斥 profile，安装时必须选择一个。VOS 根据宿主机 caps 中的架构、CUDA 和 `device-type` 判断可用 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。智能分析和抽帧也只有在实际设备探测成功后才启用硬解，CPU profile 可正常使用声明了 VA-API 的系统 FFmpeg。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
 
-VOS 用户可在 Agent、视觉、图片、视频、配音、字幕转写和音乐生成设置中选择 V-Router。V-ChatCut 使用当前登录账户读取模型目录，并按功能所需 endpoint 筛选模型；视频生成对应 `videos/generations`，Agent 列表只保留可走 `/v1/chat/completions` 的模型，V-Router 并入的 v-voice 音频模型不会出现在对话模型里。配音设置会在选定 TTS 模型后读取 `/v1/audio/voices` 的可用音色，并保存默认音色供 Agent 与生成请求使用。音乐生成通过 `audio/music/generations` 调用 V-Music，支持时长、负面提示词、随机种子、BPM、调性、拍号、纯音乐及 WAV/FLAC 输出，上游错误会显示在生成任务中。API Key、上游地址和模型管理均留在 V-Router，V-ChatCut 只保存用户选中的模型名和音色 ID。
+VOS 用户可在 Agent、视觉、图片、视频、配音、字幕转写和音乐生成设置中选择 V-Scheduler。V-ChatCut 使用当前登录账户读取模型目录，并按功能所需 endpoint 筛选模型；视频生成对应 `videos/generations`，Agent 列表只保留可走 `/v1/chat/completions` 的模型，V-Scheduler 并入的 v-voice 音频模型不会出现在对话模型里。配音设置会在选定 TTS 模型后读取 `/v1/audio/voices` 的可用音色，并保存默认音色供 Agent 与生成请求使用。音乐生成通过 `audio/music/generations` 调用 V-Music，支持时长、负面提示词、随机种子、BPM、调性、拍号、纯音乐及 WAV/FLAC 输出，上游错误会显示在生成任务中。API Key、上游地址和模型管理均留在 V-Scheduler，V-ChatCut 只保存用户选中的模型名和音色 ID。
 
 工程存储使用 SQLite 作为唯一后端，首次使用时按 VOS 用户导入旧 JSON，原文件保留为备份。导入失败会阻止存储操作并在下次访问时重试；`OPENCHATCUT_SQLITE_STORE` 不再切换存储后端。
 
@@ -594,3 +594,9 @@ OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICE
 4. 发起 Pull Request，并附上涉及 UI 或视频行为的截图/验收证据。
 
 问题与功能建议请使用 [GitHub Issues](https://github.com/0xsline/OpenChatCut/issues)。
+
+## V-Scheduler 迁移
+
+模型入口统一使用 `http://v-scheduler-gateway:8080`，以当前 VOS 用户身份读取 `/api/v1/models` 返回的可见模型与 `endpoints`。打开设置中的 V-Scheduler 页面时自动读取模型，可点击「刷新模型」重新读取；显式 endpoint 优先；内置模型的 endpoint 为空时，按网关相同的已声明能力映射筛选，不按模型名称猜测，未声明任何能力的模型不列出。对话使用 `chat_completions`，图片、视频、配音、转写、音乐分别使用对应的生成接口。上游地址和密钥继续只在 V-Scheduler 配置。
+
+升级保留已有模型、音色、默认厂商、工程和用户目录；持久化的 `vrouter` provider ID、`LLM_VROUTER_*` 和 `V_ROUTER_*` 键作为兼容存储格式保留，不再连接旧 V-Router。已保存但不再可见或未声明所需 endpoint 的模型不会被自动清空，应刷新后选择当前可用模型。回滚无需改写配置。

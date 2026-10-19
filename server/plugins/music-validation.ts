@@ -120,15 +120,15 @@ function validateAtlas(input: MusicRequest, mode: MusicMode, prompt: string, lyr
 function validateVRouter(input: MusicRequest, mode: MusicMode, prompt: string, lyrics?: string): void {
   if (mode !== 't2m') throw new Error('vrouter mode must be t2m');
   rejectMurekaOnly(input);
-  if (!prompt || prompt.length > 4000) throw new Error('V-Router music prompt is required and must be at most 4000 characters');
-  if (lyrics) throw new Error('V-Router music does not accept lyrics');
+  if (!prompt || prompt.length > 4000) throw new Error('V-Scheduler music prompt is required and must be at most 4000 characters');
+  if (lyrics) throw new Error('V-Scheduler music does not accept lyrics');
   if (input.referenceAudioPath || input.coverFeatureId || input.lyricsOptimizer !== undefined
-    || input.sampleRate !== undefined || input.bitrate !== undefined) throw new Error('MiniMax-only controls are not supported by V-Router music');
-  if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration < 10)) throw new Error('V-Router music duration must be at least 10 seconds');
-  if (input.negativePrompt !== undefined && input.negativePrompt.length > 4000) throw new Error('V-Router music negativePrompt must be at most 4000 characters');
-  if (input.seed !== undefined && !Number.isInteger(input.seed)) throw new Error('V-Router music seed must be an integer');
-  if (input.bpm !== undefined && (!Number.isInteger(input.bpm) || input.bpm < 20 || input.bpm > 300)) throw new Error('V-Router music bpm must be an integer from 20 to 300');
-  if (input.audioFormat && input.audioFormat !== 'wav' && input.audioFormat !== 'flac') throw new Error('V-Router music audioFormat must be wav or flac');
+    || input.sampleRate !== undefined || input.bitrate !== undefined) throw new Error('MiniMax-only controls are not supported by V-Scheduler music');
+  if (input.duration !== undefined && (!Number.isFinite(input.duration) || input.duration < 10)) throw new Error('V-Scheduler music duration must be at least 10 seconds');
+  if (input.negativePrompt !== undefined && input.negativePrompt.length > 4000) throw new Error('V-Scheduler music negativePrompt must be at most 4000 characters');
+  if (input.seed !== undefined && !Number.isInteger(input.seed)) throw new Error('V-Scheduler music seed must be an integer');
+  if (input.bpm !== undefined && (!Number.isInteger(input.bpm) || input.bpm < 20 || input.bpm > 300)) throw new Error('V-Scheduler music bpm must be an integer from 20 to 300');
+  if (input.audioFormat && input.audioFormat !== 'wav' && input.audioFormat !== 'flac') throw new Error('V-Scheduler music audioFormat must be wav or flac');
 }
 
 export function validateMusicRequest(input: MusicRequest): ValidMusicRequest {

@@ -1,5 +1,5 @@
 import { proxyDispatcher } from '../outbound-proxy.ts';
-import { vRouterAccessToken, vRouterApiBaseUrl } from '../v-router-client.ts';
+import { vSchedulerAccessToken, vSchedulerApiBaseUrl } from '../v-scheduler-client.ts';
 import type { RegisterGenerationProviderTask } from './generation-jobs.ts';
 import type { ValidVideoRequest } from './video-validation.ts';
 
@@ -16,9 +16,9 @@ async function providerError(response: Response): Promise<string> {
   const text = await response.text();
   try {
     const data = JSON.parse(text) as { message?: string; error?: { message?: string } };
-    return data.error?.message ?? data.message ?? `V-Router video generation failed (${response.status})`;
+    return data.error?.message ?? data.message ?? `V-Scheduler video generation failed (${response.status})`;
   } catch {
-    return text.slice(0, 300) || `V-Router video generation failed (${response.status})`;
+    return text.slice(0, 300) || `V-Scheduler video generation failed (${response.status})`;
   }
 }
 
@@ -53,7 +53,7 @@ function decodeTask(value: string): { upstream: string; id: string } {
   };
 }
 
-/** V-Router exposes capability-routed POST /videos/generations. Async provider
+/** V-Scheduler exposes capability-routed POST /videos/generations. Async provider
  * resources are then pinned to the selected upstream for stable polling. */
 export async function generateVRouterVideo(
   input: ValidVideoRequest,
@@ -61,9 +61,9 @@ export async function generateVRouterVideo(
   registerProviderTask: RegisterGenerationProviderTask,
   existingTaskId?: string,
 ): Promise<string> {
-  const token = vRouterAccessToken();
-  if (!token || !options.vrouterVideoModel) throw new Error('V-Router video requires a VOS login and selected video model');
-  const baseUrl = vRouterApiBaseUrl().replace(/\/$/, '');
+  const token = vSchedulerAccessToken();
+  if (!token || !options.vrouterVideoModel) throw new Error('V-Scheduler video requires a VOS login and selected video model');
+  const baseUrl = vSchedulerApiBaseUrl().replace(/\/$/, '');
   const headers: Record<string, string> = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   let task = existingTaskId ? decodeTask(existingTaskId) : undefined;
   let current: Record<string, unknown>;
@@ -83,9 +83,9 @@ export async function generateVRouterVideo(
     const immediate = firstVideoUrl(current);
     if (immediate && SUCCESSES.has(String(current.status ?? 'completed').toLowerCase())) return immediate;
     const id = String(current.id ?? current.task_id ?? '').trim();
-    if (!id) throw new Error('V-Router video generation returned neither a video URL nor a task id');
+    if (!id) throw new Error('V-Scheduler video generation returned neither a video URL nor a task id');
     const upstream = response.headers.get('X-VRouter-Upstream')?.trim() ?? '';
-    if (!upstream) throw new Error('V-Router video task did not identify its upstream for polling');
+    if (!upstream) throw new Error('V-Scheduler video task did not identify its upstream for polling');
     task = { upstream, id };
     await registerProviderTask('vrouter', encodeTask(upstream, id));
   } else {
@@ -104,10 +104,10 @@ export async function generateVRouterVideo(
     if (SUCCESSES.has(status)) {
       const url = firstVideoUrl(current);
       if (url) return url;
-      throw new Error('V-Router video generation succeeded without a video URL');
+      throw new Error('V-Scheduler video generation succeeded without a video URL');
     }
-    if (FAILURES.has(status)) throw new Error(`V-Router video generation ${status}`);
+    if (FAILURES.has(status)) throw new Error(`V-Scheduler video generation ${status}`);
     await wait(3_000);
   }
-  throw new Error('V-Router video generation timed out');
+  throw new Error('V-Scheduler video generation timed out');
 }

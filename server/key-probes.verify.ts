@@ -18,14 +18,13 @@ delete process.env.OPENCHATCUT_DATA_DIR;
 process.on('exit', () => rmSync(fixtureHome, { recursive: true, force: true }));
 
 const {
-  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, parseVRouterModelCatalog, parseVRouterVoices, runProbe, runProxyProbe,
+  PROBES, classifyStatus, makeGetter, minimaxPostCheck, networkMessage, parseVSchedulerModelCatalog, parseVSchedulerVoices, runProbe, runProxyProbe,
 } = await import('./key-probes.ts');
 
-assert.deepEqual(parseVRouterVoices('{"voices":[{"id":"default"},{"id":"speaker_1"},{"id":"default"}]}'), ['default', 'speaker_1']);
-assert.deepEqual(parseVRouterVoices('{"voices":[{"name":"missing-id"}]}'), []);
+assert.deepEqual(parseVSchedulerVoices('{"voices":[{"id":"default"},{"id":"speaker_1"},{"id":"default"}]}'), ['default', 'speaker_1']);
+assert.deepEqual(parseVSchedulerVoices('{"voices":[{"name":"missing-id"}]}'), []);
 
-// V-Router catalog: the LLM picker keeps chat-capable models plus endpoint-less
-// legacy rows; v-voice audio models only match their own capability pages.
+// V-Scheduler capability pickers require declared endpoints; saved legacy IDs remain untouched.
 const vRouterCatalog = JSON.stringify({ models: [
   { qualified: 'qwen3.5', endpoints: ['chat_completions', 'responses'] },
   { qualified: 'v-voice/qwen3-asr-0.6b', endpoints: ['audio/transcriptions'] },
@@ -33,12 +32,27 @@ const vRouterCatalog = JSON.stringify({ models: [
   { qualified: 'v-voice/speaker-campplus-zh-en', endpoints: ['audio/speakers', 'audio/speakers/identify', 'audio/speakers/verify'] },
   { qualified: 'legacy-model' },
 ] });
-assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, 'chat_completions'), ['legacy-model', 'qwen3.5']);
-assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, 'audio/transcriptions'), ['legacy-model', 'v-voice/qwen3-asr-0.6b']);
-assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog, ['audio/speech', 'audio/transcriptions']),
-  ['legacy-model', 'v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b']);
-assert.deepEqual(parseVRouterModelCatalog(vRouterCatalog), ['legacy-model', 'qwen3.5',
+assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, 'chat_completions'), ['qwen3.5']);
+assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, 'audio/transcriptions'), ['v-voice/qwen3-asr-0.6b']);
+assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, ['audio/speech', 'audio/transcriptions']),
+  ['v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b']);
+assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog), ['legacy-model', 'qwen3.5',
   'v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b', 'v-voice/speaker-campplus-zh-en']);
+
+assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [
+  { qualified: 'path-chat', endpoints: ['/v1/chat/completions'] },
+  { qualified: 'path-chat', endpoints: ['chat_completions'] },
+  { qualified: 'response-only', endpoints: ['responses'] },
+  { qualified: 'missing-endpoint' },
+] }), 'chat_completions'), ['path-chat']);
+
+// Native Ollama catalogs expose capabilities; explicit endpoints must still win.
+assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [
+  { qualified: 'native-chat', endpoints: [], capabilities: ['completion'] },
+  { qualified: 'native-embedding', capabilities: ['embedding'] },
+  { qualified: 'native-asr', capabilities: ['asr'] },
+  { qualified: 'explicit-asr', endpoints: ['audio/transcriptions'], capabilities: ['completion'] },
+] }), 'chat_completions'), ['native-chat']);
 
 // 1. One-to-one correspondence with the provider page of settingsSchema (the page key has the same name); the llm page is derived from the preset,
 // Synchronize this list when adding other capability pages.

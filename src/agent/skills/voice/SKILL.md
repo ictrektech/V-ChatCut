@@ -44,11 +44,11 @@ Use `submit_voice` to create a TTS audio asset. The current MCP tool contract is
   `minimax`, `inworld`, `fishaudio`, `speechify`, `openai`, `gemini`,
   `mistral`, `cartesia`, or `vrouter`. All providers are opt-in; use only providers shown
   as configured in the capabilities prompt.
-- `voiceId` is concrete and provider-specific. V-Router may omit it to use the
+- `voiceId` is concrete and provider-specific. V-Scheduler may omit it to use the
   default voice saved in Settings. Deliberate MiniMax `timbreWeights` mixing
   must also leave `voiceId` empty. Do not mix catalogs.
 - The curated catalog in [references/voices.md](references/voices.md) covers
-  only Doubao, ElevenLabs, and MiniMax. V-Router reads voices from the selected
+  only Doubao, ElevenLabs, and MiniMax. V-Scheduler reads voices from the selected
   model in Settings. Other providers have no bundled preset
   or sample catalog in OpenChatCut. Require a concrete voice ID from the user or
   their provider account; never invent a preset or `/voice-samples/...` URL.
