@@ -90,3 +90,5 @@ Before a release, build every affected image, verify it, then run
 `ictrek.app/scripts/update_version.sh`. Image tags contain only the platform
 and build date. The VOS package injects its version into the running services
 through `VOS_APP_VERSION`; do not edit VERSION manually.
+
+Build and runtime dependency installation both use the Huawei npm mirror with the committed package lock; this avoids relying on direct npmjs access from build hosts.

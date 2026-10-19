@@ -4,7 +4,7 @@ ARG NGINX_BASE_IMAGE
 FROM ${NODE_BASE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --registry=https://repo.huaweicloud.com/repository/npm/
 COPY . .
 ARG VITE_BASE_PATH=/app/com.ictrek.v-chatcut/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
