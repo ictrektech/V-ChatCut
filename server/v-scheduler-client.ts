@@ -1,6 +1,6 @@
 import { currentVOSUser, vosAuthEnabled } from './vos-user-context.ts';
 
-export const V_SCHEDULER_BASE_URL = 'http://v-scheduler-gateway:8080';
+export const V_SCHEDULER_BASE_URL = 'http://v-scheduler:8080';
 
 export function vSchedulerAccessToken(): string {
   if (!vosAuthEnabled()) return '';

@@ -4,7 +4,7 @@ Date: 2026-10-19. Scope: VOS model discovery, endpoint routing, UI naming and ex
 
 ## Contract and preservation
 
-- All VOS inference and model discovery use `http://v-scheduler-gateway:8080` with the current authenticated user's token. No shared or anonymous credential replaces the user identity.
+- All VOS inference and model discovery use `http://v-scheduler:8080` with the current authenticated user's token. No shared or anonymous credential replaces the user identity.
 - `/api/v1/models` supplies visible model IDs, endpoints and capabilities. Explicit endpoints take precedence; endpoint-less native models follow the gateway's declared-capability fallback. Untyped legacy rows are excluded.
 - Vision choices require both a chat-compatible interface and declared vision capability. OCR and embedding endpoints are not vision-chat choices.
 - Stored `vrouter`, `LLM_VROUTER_*` and `V_ROUTER_*` values remain compatible. Discovery does not clear saved selections. A removed saved TTS model does not block discovery of replacement models.

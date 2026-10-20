@@ -46,6 +46,6 @@ CUDA profile 会优先探测 NVIDIA NVENC。硬件编码器或驱动不可用时
 
 ## V-Scheduler 迁移
 
-模型入口统一使用 `http://v-scheduler-gateway:8080`，以当前 VOS 用户身份读取 `/api/v1/models` 返回的可见模型与 `endpoints`。打开设置中的 V-Scheduler 页面时自动读取模型，可点击「刷新模型」重新读取；显式 endpoint 优先；内置模型的 endpoint 为空时，按网关相同的已声明能力映射筛选，不按模型名称猜测，未声明任何能力的模型不列出。对话使用 `chat_completions`，图片、视频、配音、转写、音乐分别使用对应的生成接口。上游地址和密钥继续只在 V-Scheduler 配置。
+模型入口统一使用 `http://v-scheduler:8080`，以当前 VOS 用户身份读取 `/api/v1/models` 返回的可见模型与 `endpoints`。打开设置中的 V-Scheduler 页面时自动读取模型，可点击「刷新模型」重新读取；显式 endpoint 优先；内置模型的 endpoint 为空时，按网关相同的已声明能力映射筛选，不按模型名称猜测，未声明任何能力的模型不列出。对话使用 `chat_completions`，图片、视频、配音、转写、音乐分别使用对应的生成接口。上游地址和密钥继续只在 V-Scheduler 配置。
 
 升级保留已有模型、音色、默认厂商、工程和用户目录；持久化的 `vrouter` provider ID、`LLM_VROUTER_*` 和 `V_ROUTER_*` 键作为兼容存储格式保留，不再连接旧 V-Router。已保存但不再可见或未声明所需 endpoint 的模型不会被自动清空，应刷新后选择当前可用模型。回滚无需改写配置。

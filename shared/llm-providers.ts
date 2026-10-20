@@ -20,7 +20,7 @@ export const LLM_PROVIDER_PRESETS = [
     id: 'vrouter',
     label: 'V-Scheduler · VOS 账户模型',
     protocol: 'openai-compatible',
-    baseUrl: 'http://v-scheduler-gateway:8080/v1',
+    baseUrl: 'http://v-scheduler:8080/v1',
     defaultModel: '',
   },
   {

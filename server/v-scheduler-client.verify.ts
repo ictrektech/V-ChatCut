@@ -23,11 +23,11 @@ const saved = {
 seedKeystore(saved);
 const originalFetch = globalThis.fetch;
 try {
-  assert.equal(llmTarget(req), 'http://v-scheduler-gateway:8080/v1');
+  assert.equal(llmTarget(req), 'http://v-scheduler:8080/v1');
   assert.throws(() => llmHeaders(req), /current VOS login/);
   const seen: string[] = [];
   globalThis.fetch = async (url, options) => {
-    assert.equal(String(url), 'http://v-scheduler-gateway:8080/api/v1/models');
+    assert.equal(String(url), 'http://v-scheduler:8080/api/v1/models');
     seen.push(new Headers(options?.headers).get('Authorization') ?? '');
     return Response.json({ models: [
       { qualified: 'visible/chat', endpoints: ['chat_completions'] },
