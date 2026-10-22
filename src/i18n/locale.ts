@@ -4,7 +4,8 @@
 // Rules: Use useT() (subscription switching) in React components; pure helper modules can directly import { t }
 //  — As long as the component that renders its output calls useT(), it will be recalculated when switching languages.
 // LLM interface (systemPrompt/tool ​​description/skill content) and persistent dynamic history tags do not enter i18n.
-// Default language: the saved choice wins; otherwise the system language (zh/ru), and English for everything else.
+// Default language: the saved choice wins; otherwise the VOS platform language when embedded,
+// otherwise the system language (zh/ru), and English for everything else.
 import { useSyncExternalStore } from 'react';
 import { ensureLocaleDict, localeDictReady, localeDicts } from './dictRegistry';
 
@@ -22,6 +23,20 @@ const DOCUMENT_LANG: Record<Locale, string> = {
   ru: 'ru',
 };
 
+function isLocale(value: unknown): value is Locale {
+  return value === 'zh' || value === 'en' || value === 'it' || value === 'ru';
+}
+
+function readStored(): Locale | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return isLocale(stored) ? stored : null;
+  } catch {
+    // Private mode / storage disabled → system language below.
+    return null;
+  }
+}
+
 function systemLocale(): Locale {
   try {
     const tag = String(navigator.language ?? '').toLowerCase();
@@ -34,22 +49,90 @@ function systemLocale(): Locale {
   }
 }
 
-function readInitial(): Locale {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'zh' || stored === 'en' || stored === 'it' || stored === 'ru') return stored;
-  } catch {
-    // Private mode / storage disabled → system language below.
-  }
-  return systemLocale();
-}
-
-let current: Locale = readInitial();
+// An in-app choice outranks the platform: the top-bar toggle is how a user says
+// "this app, this language" while VOS keeps its own.
+const storedAtStartup = readStored();
+let explicitChoice = storedAtStartup !== null;
+let current: Locale = storedAtStartup ?? systemLocale();
 if (typeof document !== 'undefined') document.documentElement.lang = DOCUMENT_LANG[current];
 const subscribers = new Set<() => void>();
 
+interface PlatformLocaleState { locale?: unknown }
+interface PlatformLocaleBridge {
+  broadcast?: {
+    on?: (event: 'locale-change', handler: (payload: PlatformLocaleState | null) => void) => unknown;
+  };
+  getState?: () => Promise<PlatformLocaleState | null>;
+}
+
+function platformBridge(): PlatformLocaleBridge | null {
+  if (typeof window === 'undefined') return null;
+  return (window as unknown as { vos_platform?: PlatformLocaleBridge }).vos_platform ?? null;
+}
+
+/** VOS broadcasts BCP-47 tags (zh-CN, en-US); a language without a dictionary lands on English. */
+function platformLocale(value: unknown): Locale | null {
+  const tag = typeof value === 'string' ? value.trim().toLowerCase().replace(/_/g, '-') : '';
+  if (!tag) return null;
+  if (tag.startsWith('zh')) return 'zh';
+  if (tag.startsWith('it')) return 'it';
+  if (tag.startsWith('ru')) return 'ru';
+  return 'en';
+}
+
+function acceptPlatformLocale(value: unknown): void {
+  if (explicitChoice) return;
+  const next = platformLocale(value);
+  if (next) setLocale(next, false);
+}
+
+/**
+ * Follow the VOS platform language. Subscribe to `locale-change` first, then
+ * align with `getState()`, so a switch made while this app starts is not lost.
+ * Resolves after the snapshot is applied; no-op outside VOS or on bridges
+ * older than 0.2.0 (no broadcast / getState).
+ */
+export async function alignWithPlatformLocale(waitMs = 1_500): Promise<void> {
+  let bridge = platformBridge();
+  if (!bridge && typeof window !== 'undefined' && window.parent !== window) {
+    const started = Date.now();
+    while (!bridge && Date.now() - started < waitMs) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+      bridge = platformBridge();
+    }
+  }
+  if (!bridge) return;
+  let events = 0;
+  try {
+    bridge.broadcast?.on?.('locale-change', (payload) => {
+      events += 1;
+      acceptPlatformLocale(payload?.locale);
+    });
+  } catch {
+    // Older bridge without event broadcast: the snapshot below still applies.
+  }
+  const beforeSnapshot = events;
+  try {
+    const state = await bridge.getState?.();
+    if (events === beforeSnapshot) acceptPlatformLocale(state?.locale);
+  } catch {
+    // getState is optional; keep the browser/system language instead.
+  }
+}
+
 export function getLocale(): Locale {
   return current;
+}
+
+/**
+ * Re-read the saved choice. VOS installs the per-user storage partition after
+ * this module loads, so the startup read only sees the unpartitioned store.
+ */
+export function refreshStoredLocale(): void {
+  const stored = readStored();
+  if (!stored) return;
+  explicitChoice = true;
+  setLocale(stored, false);
 }
 
 /** Subscribe to locale switches; returns the unsubscribe function. */
@@ -77,13 +160,16 @@ function notifySubscribers(): void {
   subscribers.forEach((notify) => notify());
 }
 
-export function setLocale(next: Locale): void {
+export function setLocale(next: Locale, persist = true): void {
+  if (persist) explicitChoice = true;
   if (next === current) return;
   const alreadyLoaded = localeDictReady(next);
   current = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, next);
-  } catch { /* If the private mode cannot be saved, it will only affect this session */ }
+  if (persist) {
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch { /* If the private mode cannot be saved, it will only affect this session */ }
+  }
   if (typeof document !== 'undefined') {
     document.documentElement.lang = DOCUMENT_LANG[next];
   }

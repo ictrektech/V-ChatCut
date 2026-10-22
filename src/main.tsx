@@ -6,12 +6,13 @@ import { hydratePlugins } from './plugins/store';
 import { initSkins } from './skins';
 import { bootstrapVOSSession } from './vos/auth';
 import { installVOSStoragePartition } from './vos/storagePartition';
-import { ensureLocaleDict, getLocale, prefetchLocaleDicts } from './i18n/locale';
+import { alignWithPlatformLocale, ensureLocaleDict, getLocale, prefetchLocaleDicts, refreshStoredLocale } from './i18n/locale';
 
 // Kick the active locale's dictionary off FIRST so its fetch overlaps the setup
 // below; the render waits on it so no frame renders untranslated copy. Only
 // this one language is fetched — the other three cost nothing until switched.
-const localeReady = ensureLocaleDict(getLocale());
+const initialLocale = getLocale();
+const localeReady = ensureLocaleDict(initialLocale);
 
 function requireRoot(): HTMLElement {
   const value = document.getElementById('root');
@@ -29,8 +30,13 @@ async function start(): Promise<void> {
   initSkins();
   loadProjectFonts();
   void hydratePlugins().catch(() => {});
-  const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
+  // The partition changes which saved language is visible, and VOS owns the
+  // language while the app is embedded; settle both before the first frame.
+  refreshStoredLocale();
+  await alignWithPlatformLocale();
   await localeReady;
+  if (getLocale() !== initialLocale) await ensureLocaleDict(getLocale());
+  const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
   const [{ default: App }, { TranscriptWindowRoot }] = await Promise.all([
     import('./App'),
     import('./media/TranscriptWindowRoot'),

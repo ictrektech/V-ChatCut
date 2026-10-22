@@ -23,6 +23,14 @@ The VOS icon is `src/icon.png`, a 256×256 8-bit RGBA PNG with transparent
 corners. `package.sh` stages it at the root of `app.tar.gz` and validates its
 PNG dimensions and color type before producing the pull package.
 
+## UI language
+
+The interface follows the VOS platform language through the `vos_platform`
+bridge: `getState()` aligns the first frame and the `locale-change` broadcast
+switches it live. A language picked from V-ChatCut's own top-bar toggle is saved
+per VOS user and takes precedence over later platform changes. Outside VOS the
+browser language is the default.
+
 `routers.yml` declares a single top-level `page` (`id: v-chatcut`) with
 `entry-point: true`. VOS shows V-ChatCut through the application drawer and no
 longer creates an extra grouped subpage in the sidebar.
