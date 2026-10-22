@@ -126,13 +126,14 @@ export function getLocale(): Locale {
 
 /**
  * Re-read the saved choice. VOS installs the per-user storage partition after
- * this module loads, so the startup read only sees the unpartitioned store.
+ * this module loads, so the startup read only sees the unpartitioned store; a
+ * choice found there belongs to another scope and must not outrank the platform.
  */
 export function refreshStoredLocale(): void {
   const stored = readStored();
-  if (!stored) return;
-  explicitChoice = true;
-  setLocale(stored, false);
+  explicitChoice = stored !== null;
+  const next = stored ?? systemLocale();
+  if (next !== current) setLocale(next, false);
 }
 
 /** Subscribe to locale switches; returns the unsubscribe function. */
