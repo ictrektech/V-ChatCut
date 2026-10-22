@@ -612,6 +612,6 @@ VOS 包依赖统一应用 `com.ictrek.v-scheduler`，打包时实时解析其最
 
 ## V-Scheduler migration
 
-VOS model traffic now uses `http://v-scheduler-gateway:8080`. Settings automatically load the current VOS user's visible models from `/api/v1/models` and filter by declared `endpoints`; Refresh reloads the list without replacing saved choices. Explicit endpoints take precedence; native models with empty endpoint lists use the gateway's declared-capability mapping. Untyped models are excluded. Upstream addresses and credentials remain managed by V-Scheduler.
+VOS model traffic now uses `http://v-scheduler-gateway:8080`. Settings automatically load the current VOS user's visible models from `/api/v1/models` and filter by declared `endpoints`; Refresh reloads the list without replacing saved choices. Explicit endpoints take precedence; native models with empty endpoint lists use the gateway's declared-capability mapping. Fully untyped models (cloud model-API passthrough) follow the gateway chat fallback and are offered only for chat, except models declared as embedding; untyped models never appear in image, video, voice, transcription or music lists. Upstream addresses and credentials remain managed by V-Scheduler.
 
 Existing model/voice selections, preferred providers, projects and user directories are preserved. Persisted `vrouter`, `LLM_VROUTER_*` and `V_ROUTER_*` identifiers remain a compatibility storage format, not a connection to the retired service. Unavailable saved models are retained for explicit reselection; rollback requires no configuration rewrite.

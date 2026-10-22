@@ -32,7 +32,7 @@ const vRouterCatalog = JSON.stringify({ models: [
   { qualified: 'v-voice/speaker-campplus-zh-en', endpoints: ['audio/speakers', 'audio/speakers/identify', 'audio/speakers/verify'] },
   { qualified: 'legacy-model' },
 ] });
-assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, 'chat_completions'), ['qwen3.5']);
+assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, 'chat_completions'), ['legacy-model', 'qwen3.5']);
 assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, 'audio/transcriptions'), ['v-voice/qwen3-asr-0.6b']);
 assert.deepEqual(parseVSchedulerModelCatalog(vRouterCatalog, ['audio/speech', 'audio/transcriptions']),
   ['v-voice/kokoro-multilang', 'v-voice/qwen3-asr-0.6b']);
@@ -43,8 +43,22 @@ assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [
   { qualified: 'path-chat', endpoints: ['/v1/chat/completions'] },
   { qualified: 'path-chat', endpoints: ['chat_completions'] },
   { qualified: 'response-only', endpoints: ['responses'] },
-  { qualified: 'missing-endpoint' },
-] }), 'chat_completions'), ['path-chat']);
+  { qualified: 'untyped-cloud', kind: 'unknown' },
+  { qualified: 'untyped-embedding', kind: 'embedding' },
+] }), 'chat_completions'), ['path-chat', 'untyped-cloud']);
+
+// Cloud "model API" entries carry no endpoints or capabilities; the gateway
+// routes them by upstream protocol, so the chat picker keeps every untyped
+// model that is not declared as an embedding model. Media pickers stay strict.
+assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [
+  { qualified: 'com.deepseek.api/deepseek-flash', kind: 'unknown', capabilities: [], endpoints: [] },
+  { qualified: 'bge-m3', kind: 'embedding', capabilities: [], endpoints: [] },
+  { qualified: 'sd-turbo', kind: 'unknown', capabilities: ['image_generation'], endpoints: [] },
+] }), 'chat_completions'), ['com.deepseek.api/deepseek-flash']);
+assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [
+  { qualified: 'com.deepseek.api/deepseek-flash', kind: 'unknown', capabilities: [], endpoints: [] },
+  { qualified: 'bge-m3', kind: 'embedding', capabilities: [], endpoints: [] },
+] }), 'audio/speech'), []);
 
 // Native Ollama catalogs expose capabilities; explicit endpoints must still win.
 assert.deepEqual(parseVSchedulerModelCatalog(JSON.stringify({ models: [

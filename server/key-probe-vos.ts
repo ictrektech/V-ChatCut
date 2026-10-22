@@ -20,21 +20,31 @@ const SCHEDULER_ENDPOINT_CAPABILITIES: Record<string, readonly string[]> = {
   'audio/music/generations': ['music', 'text-to-music', 'instrumental'],
 };
 
+const SCHEDULER_CHAT_ENDPOINTS = new Set(['chat_completions', 'responses', 'messages', 'completions']);
+
 export function parseVSchedulerModelCatalog(bodyText: string, endpoint?: string | readonly string[]): string[] {
   try {
-    const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; endpoints?: unknown; capabilities?: unknown }> };
+    const body = JSON.parse(bodyText) as { models?: Array<{ qualified?: unknown; kind?: unknown; endpoints?: unknown; capabilities?: unknown }> };
     const wanted = endpoint == null ? null : Array.isArray(endpoint) ? endpoint : [endpoint];
+    const normalize = (value: unknown): string => typeof value === 'string'
+      ? value.trim().replace(/^\/?v1\//, '').replace(/^\//, '').replace('chat/completions', 'chat_completions') : '';
     return [...new Set((body.models ?? []).flatMap((row) => {
       const endpoints = Array.isArray(row.endpoints) ? row.endpoints : [];
-      // Explicit endpoints take precedence over capabilities. Never infer
-      // support from a model name or an untyped legacy row.
-      const normalize = (value: unknown): string => typeof value === 'string'
-        ? value.trim().replace(/^\/?v1\//, '').replace(/^\//, '').replace('chat/completions', 'chat_completions') : '';
       const capabilities = Array.isArray(row.capabilities) ? row.capabilities : [];
-      if (wanted && !wanted.some((one) => endpoints.length
-        ? endpoints.some((value) => normalize(value) === normalize(one))
-        : (SCHEDULER_ENDPOINT_CAPABILITIES[normalize(one)] ?? []).some((capability) =>
-          capabilities.some((value) => typeof value === 'string' && value.toLowerCase() === capability)))) return [];
+      // Explicit endpoints take precedence over capabilities. Never infer
+      // support from a model name. A fully undeclared model (cloud "model API"
+      // entries and legacy rows) is left to its upstream, matching the gateway's
+      // chat fallback: usable for chat unless declared as an embedding model.
+      // Non-chat pickers stay strict so an untyped chat model never appears as
+      // an image/video/audio model.
+      const matches = (one: string): boolean => {
+        const wantedOne = normalize(one);
+        if (endpoints.length) return endpoints.some((value) => normalize(value) === wantedOne);
+        if (capabilities.length) return (SCHEDULER_ENDPOINT_CAPABILITIES[wantedOne] ?? []).some((capability) =>
+          capabilities.some((value) => typeof value === 'string' && value.toLowerCase() === capability));
+        return SCHEDULER_CHAT_ENDPOINTS.has(wantedOne) && String(row.kind ?? '').toLowerCase() !== 'embedding';
+      };
+      if (wanted && !wanted.some(matches)) return [];
       return typeof row.qualified === 'string' && row.qualified.trim() ? [row.qualified.trim()] : [];
     }))].sort((a, b) => a.localeCompare(b));
   } catch { return []; }
