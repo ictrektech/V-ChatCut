@@ -1,0 +1,8476 @@
+# V-ChatCut API
+
+## Addresses and entry points
+
+Use the VOS sidebar API guide and Settings → MCP. Backend container: `http://v-chatcut-backend:5199`; frontend: `v-chatcut-frontend:80`. The package publishes no independent host business port. External clients need the deployment's reachable reverse-proxy URL; localhost and container aliases are not external addresses. The VOS page prefix is `/app/com.ictrek.v-chatcut/`. Existing Traefik rules forward backend routes and some same-origin routes require the editor Referer. Copy the reachable MCP address from Settings.
+
+## Credentials, settings and user isolation
+
+The MCP bearer token belongs to V-ChatCut; it is neither a model-provider credential nor a V-Scheduler API Key. Sign in through VOS and copy the user's configuration from Settings → MCP. Tokens are persisted per user and survive normal restarts. A write failure falls back to a process-local token, so persistence is not guaranteed on an unwritable filesystem. There is no general personal API Key CRUD/rotation HTTP endpoint. Never place the MCP token in a provider-key field.
+
+- `GET /api/auth/session`: HTTP 200 or 401; enabled, authenticated, optional user `{username,namespace}`, clientId and scope.
+- `POST /api/auth/vos-oidc`: JSON `{ "access_token": "VOS_ACCESS_TOKEN" }`; verifies VOS userinfo, returns authenticated/user and sets the 12-hour v_chatcut_session cookie. Editor-origin validation applies. External agents use the MCP token rather than a raw VOS token in that field.
+- `POST /api/auth/logout`: returns `{authenticated:false}` and clears the session. `POST /api/auth/claim-legacy-data` is an administrator-only legacy-data ownership operation with destination constraints, not normal sign-in.
+- `GET /api/keys`: configuration status keys, caps, non-secret models settings, mediaDir, dataDir, vosMode and optional restartRequired. Secret values are never returned; each keys entry has configured and source (env/runtime/none). This manages provider/integration settings, not external access Keys.
+- `POST /api/keys`: JSON map of whitelisted configuration names to new values, e.g. `{ "LLM_VROUTER_BASE_URL": "http://v-scheduler:8080/v1", "LLM_VROUTER_MODEL": "auto" }`. Unknown names are ignored; null/empty string clears a value; newlines are rejected. Omitted fields remain unchanged. VOS users cannot relocate managed media/data roots. See the native server/keystore-names.ts whitelist. Legacy VROUTER setting names remain compatible and do not require a separate V-Router container.
+- `POST /api/keys/test`: JSON `{ "page": "settings-page-id", "overrides": {} }`. Tests temporary values without persistence or secret disclosure. These settings routes require an authorized editor/VOS-user context; an arbitrary model API Key grants no management permission.
+
+## External agents: MCP initialization and calls
+
+`/api/external-mcp/mcp` implements Streamable HTTP MCP, not OpenAI inference. Send `Authorization: Bearer $CHATCUT_MCP_TOKEN`. Initialize with JSON-RPC 2.0, retain the returned Mcp-Session-Id and send notifications/initialized. Use an MCP SDK to handle both JSON and SSE responses.
+
+```bash
+MCP=http://v-chatcut-backend:5199/api/external-mcp/mcp
+curl -i "$MCP" -H "Authorization: Bearer $CHATCUT_MCP_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"example-agent","version":"1.0"}}}'
+# Save the returned Mcp-Session-Id as MCP_SESSION, then send:
+curl "$MCP" -H "Authorization: Bearer $CHATCUT_MCP_TOKEN" -H "Mcp-Session-Id: $MCP_SESSION" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+curl "$MCP" -H "Authorization: Bearer $CHATCUT_MCP_TOKEN" -H "Mcp-Session-Id: $MCP_SESSION" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+curl "$MCP" -H "Authorization: Bearer $CHATCUT_MCP_TOKEN" -H "Mcp-Session-Id: $MCP_SESSION" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"openchatcut_status","arguments":{}}}'
+```
+
+Call openchatcut_status and list_projects, then target_project. editorProjectId must match the transport's bound project. For draft edits, begin_edit_session returns editSessionId; pass it to tools and finish with review_edit_session or discard_edit_session. Offline sessions expose a supported subset, not every browser tool. Manual approval needs the editor. Live side effects require one-shot confirmation bound to the exact tool and argument digest; HTTP 200 alone is not approval.
+
+The current session's tools/list is authoritative. `?toolExposure=progressive` or `X-OpenChatCut-Tool-Exposure: progressive` enables progressive exposure; clients must handle tools/list_changed. Clients with fixed tool-list caches should use the default full mode. MCP sessions have a one-hour idle limit and a capacity of 64. On an expired-session 404, reinitialize, select the project and inspect state; never blindly replay a mutation whose outcome is unknown.
+
+## Results, jobs, cancellation and errors
+
+Tool responses contain content (JSON text and optional images) and structuredContent. Also inspect isError and business outcome (rejected/cancelled/stale/failed). Images contain base64 and mimeType. Large results can use recoverable artifact references. MCP POST bodies are limited to 2 MiB (413). Other failures include 401 invalid credential, 400 malformed/missing-session request, 404 missing session and 500 server failure. Editor origin, launch credentials or media type can fail with 403/415. DELETE on the MCP URL with the session header closes that transport and cancels unfinished editor calls; it does not delete projects or every submitted job.
+
+Protected browser export routes: POST `/export/job` submits ExportRequest; GET `/export/job/:id` reads a snapshot; POST `/export/job/:id/promote` requires a successful job (otherwise 409); DELETE `/export/job/:id` cancels queued/running work or cleans a terminal record and returns 204. Cancellation timeout is 409; unknown ID is 404. Poll generation/render jobs until terminal before consuming results. Disconnecting HTTP does not prove every background job stopped. V-Scheduler separately enforces model credentials, budgets and task priority; MCP connectivity does not imply model readiness.
+
+## Native tool fields
+
+The following catalogue is generated from committed tool schemas and native MCP transformations. It includes required fields, nested structures, enums and side-effect hints. It describes browser-connected tools without granting offline sessions extra capabilities. Always inspect the current tools/list and business result.
+
+### openchatcut_status
+
+Show connected OpenChatCut editors, this transport session binding, and capability status.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### list_projects
+
+List OpenChatCut projects, newest first.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "includeDeleted": {
+        "type": "boolean"
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### create_project
+
+Create an empty OpenChatCut project with one active timeline and one video track.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "compositionWidth": {
+        "type": "number"
+      },
+      "compositionHeight": {
+        "type": "number"
+      },
+      "fps": {
+        "type": "number"
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### target_project
+
+Permanently bind this MCP transport to a live browser editor, or to an existing stored project through the offline fallback.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string"
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "projectId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### get_editor_url
+
+Return the OpenChatCut editor URL for this session project or an explicitly named project.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string"
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### load_skill
+
+Load one bundled or selected custom skill under the active model round input budget. Omit selectors for SKILL.md; if it is paged, follow nextOffset until null before support files. Exactly one selector per call: either files=[...] to load whole omitted files, or file with offset and limit to page a single file. Never send file and files in the same call. Bundled skills: ai-cinematic-short-film, asset-import, batch-montage-variants, beat-sync-montage, create-motion-graphics, ecommerce-product-montage, explainer-video, export, image-gen, known-errors, livestream-to-clips, long-video-to-shorts, motion-graphic-placement, multi-clips-to-reels, music, music-intelligence, news-rough-cut, openchatcut-plugin-basics, product-ad-video-script, product-help, shader-gen, skill-creator, storyboard-shot-breakdown, talking-head-guide, transcription, verification, video-gen, video-thumbnail-generator, voice, widget-forms.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Skill id, e.g. \"talking-head-guide\", \"voice\", \"shader-gen\"."
+      },
+      "file": {
+        "type": "string",
+        "description": "One safe relative file path to page; use returned nextOffset for the next call. Omit the key entirely when sending files; never pass an empty string."
+      },
+      "files": {
+        "type": "array",
+        "description": "Optional safe relative paths from omittedFiles. When present, only these whole files are returned. Omit the key entirely when paging with file; never pass an empty array.",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "maxItems": 64
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "UTF-16 character offset for file paging; must not split a surrogate pair."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 48000,
+        "description": "Maximum UTF-16 characters requested; the runtime may return a smaller exact page to fit the active input budget."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "name"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### ToolSearch
+
+Search the deferred agent-tool catalog by keyword and activate matching schemas. Use this before an uncommon operation instead of guessing a tool name. Results become callable on the next model step; essential tools are already active.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Keyword(s), e.g. \"export\", \"caption\", \"stock\", \"shader\"."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Max activated results (default 8, max 12)."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### list_edit_sessions
+
+List edit sessions for the bound project, including recovery metadata for drafts whose MCP owner disconnected.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### recover_edit_session
+
+Resume or discard an orphaned edit session. Resume is allowed only when its checkpoint still matches the live project revision.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "resume",
+          "discard"
+        ]
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId",
+      "action"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### begin_edit_session
+
+Start an isolated OpenChatCut edit draft. Manual mode waits for proposal review; auto mode applies only the staged proposal at review_edit_session. Real-project tools always require separate confirmation.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "clientName": {
+        "type": "string",
+        "description": "Display name shown on the review card, such as Codex or Claude."
+      },
+      "approvalMode": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "auto"
+        ],
+        "description": "manual (default) requires proposal approval in OpenChatCut; auto applies the reviewed draft only and never bypasses real-tool confirmation."
+      },
+      "reuseExisting": {
+        "type": "boolean",
+        "description": "When true, reuse an owned active draft or adopt an unchanged orphaned draft. Rejects drafts owned or being recovered by another transport."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    }
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### get_edit_session
+
+Read session status: drafting/awaiting_review or terminal applied/rejected/cancelled/stale/failed.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### review_edit_session
+
+Finish drafting. Manual sessions show a review card; auto sessions immediately apply all staged proposal edits. This does not approve real-project tools.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "summary": {
+        "type": "string",
+        "description": "Short human-readable summary of the staged edit."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### discard_edit_session
+
+Cancel a draft or pending review without changing the live OpenChatCut project.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### export_jianying_draft
+
+Export the current timeline as a CapCut/JianYing draft (via capcut-cli). The draft appears in the CapCut/JianYing project list; open it there to review and render. Only call this when the user explicitly confirms the export. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "draftName": {
+        "type": "string",
+        "description": "Draft name shown in CapCut/JianYing. Defaults to a timestamped name."
+      },
+      "draftsDir": {
+        "type": "string",
+        "description": "Optional draft store directory override (defaults to the CapCut store)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_timeline
+
+Read the current timeline: fps and every clip, including canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus), exact source window (srcInFrame, sourceStartFrame, sourceDurationInFrames, sourceEndFrameExclusive), and editable state (keyframes, transform, filters, volume, fades). Call this first to see current state before editing. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### list_templates
+
+Discover motion-graphic templates. With no args: returns the category list with counts. With a category: returns the template names in it. There are ~211 templates, so prefer a category or search_templates instead of listing everything. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": {
+        "type": "string",
+        "description": "Optional category to list (e.g. \"title-cards\", \"lower-thirds\")."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### search_templates
+
+Fuzzy-search templates by name/category keyword. Use this to find a specific template among the ~211. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### add_motion_graphic
+
+Add a motion-graphic template as a new clip. Placed at the end of the track unless startFrame is given. ripple:true makes room — same-track clips at/after startFrame shift right by the new clip's length instead of overlapping (an insert edit). Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "templateName": {
+        "type": "string",
+        "description": "Template name (fuzzy match against list_templates)."
+      },
+      "track": {
+        "type": "string",
+        "description": "Current video-track alias or stable id (default V1)."
+      },
+      "startFrame": {
+        "type": "number",
+        "description": "Optional exact start frame; omit to append."
+      },
+      "ripple": {
+        "type": "boolean",
+        "description": "Insert-edit: push same-track clips at/after startFrame right to make room."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "templateName",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### update_item_props
+
+Change one or more editable props of a clip (e.g. text, colors). Only props from the template schema. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "props": {
+        "type": "object",
+        "description": "Map of propKey → new value."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "props",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### move_item
+
+Move a clip to a different track and/or start frame. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "track": {
+        "type": "string",
+        "description": "Current compatible track alias or stable id."
+      },
+      "startFrame": {
+        "type": "number"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### set_item_timing
+
+Retime a clip: change its start frame and/or its duration (in frames), and/or set a fade-in / fade-out. Use this to trim or lengthen a clip, or to fade it in/out. Fades are in SECONDS (edit_item fadeIn/fadeOut semantics) — video clips fade opacity, audio clips fade volume; 0 clears a fade. ripple:true shifts later same-track clips when the right edge moves (shorten closes the gap; lengthen pushes). Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "startFrame": {
+        "type": "number"
+      },
+      "durationInFrames": {
+        "type": "number"
+      },
+      "fadeInSeconds": {
+        "type": "number",
+        "description": "Fade-in length in seconds (0 clears)."
+      },
+      "fadeOutSeconds": {
+        "type": "number",
+        "description": "Fade-out length in seconds (0 clears)."
+      },
+      "ripple": {
+        "type": "boolean",
+        "description": "When duration/start moves the right edge, shift later same-track clips by the same delta."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### duplicate_item
+
+Duplicate a clip (the copy is appended to the end of its track). Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### remove_item
+
+Delete a clip from the timeline. ripple:true also closes the gap — later clips on the same track shift left by the removed clip's length (a ripple delete); default leaves a gap. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "ripple": {
+        "type": "boolean"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### split_item
+
+Split a clip into two at the given absolute frame. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "atFrame": {
+        "type": "number"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "atFrame",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### list_audio
+
+List available audio assets (music / SFX) that can be placed on audio tracks A1/A2. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### add_audio
+
+Add an audio asset (music/SFX) as a clip on an audio track (A1/A2). Appended to the track end unless startFrame is given. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "audioName": {
+        "type": "string",
+        "description": "Audio asset name (fuzzy match against list_audio)."
+      },
+      "track": {
+        "type": "string",
+        "description": "Current audio-track alias or stable id (default A1)."
+      },
+      "startFrame": {
+        "type": "number",
+        "description": "Optional exact start frame; omit to append."
+      },
+      "ripple": {
+        "type": "boolean",
+        "description": "Insert-edit: push same-track clips at/after startFrame right to make room."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "audioName",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### clear_timeline
+
+Remove ALL clips from the timeline. Only when the user clearly asks to start over / clear everything. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### set_aspect_ratio
+
+Retarget the canvas to a different aspect ratio for long-to-short (same ratio+fit semantics as manage_timelines). E.g. turn a 16:9 video vertical for Shorts/Reels. fit: contain (letterbox) keeps everything; cover (fill+crop) fills the frame and crops the sides. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "ratio": {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4"
+        ]
+      },
+      "fit": {
+        "type": "string",
+        "enum": [
+          "contain",
+          "cover"
+        ],
+        "description": "How existing clips adapt to the new ratio."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "ratio",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_agent_artifact
+
+Read a bounded slice of an archived Agent tool result in the current project. Use JSON Pointer to select a narrow field before paging with offset/limit. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "artifactId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,20}$"
+      },
+      "pointer": {
+        "type": "string",
+        "maxLength": 1024,
+        "pattern": "^(?:|/(?:[^~]|~[01])*)$"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 8388608
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 12000
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "artifactId",
+      "editSessionId"
+    ],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_transcript
+
+Read the current timeline transcript as a compact phrase view for planning and semantic editing. This is the default transcript reading surface for long videos and multiple takes: words are grouped by speaker changes, pauses, and a bounded phrase size while retaining source item, source timestamps, timeline frames, and original word-index ranges. Deleted/trimmed words are omitted, but the word-level transcript remains unchanged for precise edits. Use find_transcript when locating a specific quote instead. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Optional clip id or unique prefix. Omit to read all transcribed clips."
+      },
+      "track": {
+        "type": "string",
+        "description": "Optional track alias/id. Ignored when itemId is set."
+      },
+      "silenceThresholdSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Start a new phrase after this pause; defaults to 0.5 seconds."
+      },
+      "maxWordsPerPhrase": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Hard cap for uninterrupted speech; defaults to 40 words."
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Phrase offset for pagination; defaults to 0."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "description": "Maximum phrases to return; defaults to 80."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### search_media
+
+Search project media through one typed surface. Returns visual ChineseCLIP scene hits and spoken transcript hits with normalized per-modality scores, source time ranges, asset ids, and source revisions. Results are grouped by modality because cosine and transcript scores are not directly comparable; stale derived hits are excluded. Pass hit sourceStartMs/sourceEndMs unchanged into edit_item adds using fields with the same names; edit_item converts milliseconds to source frames internally. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Visual concept or spoken phrase to find."
+      },
+      "modalities": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "visual",
+            "spoken"
+          ]
+        },
+        "description": "Optional subset; defaults to both visual and spoken."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum hits per modality; defaults to 12."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### find_transcript
+
+Find WHEN a phrase is spoken — a time-coordinate lookup, not a transcript reader or editing tool. Returns matches with their timeline frame range (fromFrame/toFrame) so you can anchor B-roll, motion graphics, markers, or overlays at that moment (or locate a spot before delete_text). Default: contiguous case/punctuation/whitespace-insensitive match over every transcribed clip on the timeline; edits are respected (deleted words won't match). asset = search ONE asset's raw transcript regardless of timeline use (library lookup, ignores edits). track = restrict to that track. fuzzy = token-order match with window tolerance (use when ASR may have fillers like "uh," between query tokens). includeWordTimestamps = add a Words block under each match with each word's start → end time — use when syncing animation beats to which word is being said; skip for plain phrase anchoring (extra output). limit = max results (default 10). Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Text to search for."
+      },
+      "asset": {
+        "type": "string",
+        "description": "Asset ID or prefix ID. Omit to search across the whole project."
+      },
+      "track": {
+        "type": "string",
+        "description": "Track alias (V1/A1/...) or track id. Restricts the search to that track."
+      },
+      "fuzzy": {
+        "type": "boolean",
+        "description": "Token-window match (tolerates fillers between tokens)."
+      },
+      "includeWordTimestamps": {
+        "type": "boolean",
+        "description": "Include per-word timestamps inside each match (default false). Adds a Words block under each match with each word's start -> end time. Use when syncing animation beats to speech cadence (e.g., MG internal rhythm matched to which word is being said)."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Max results returned (default 10)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### manage_timelines
+
+Manage project timelines (sequences): list/create/duplicate/switch/update/delete, or insert one timeline as a nested sequence instance in the active timeline. Nested instances reference the child timeline without copying it and reject missing/cyclic references. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "create",
+          "duplicate",
+          "switch",
+          "update",
+          "delete",
+          "insert"
+        ],
+        "description": "What to do."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Target timeline id (prefix/name ok). insert: the child timeline to reference; update defaults to active."
+      },
+      "timelineIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "delete: several timeline ids (prefixes ok)."
+      },
+      "name": {
+        "type": "string",
+        "description": "create/duplicate: the new timeline's name; update: rename."
+      },
+      "ratio": {
+        "type": "string",
+        "enum": [
+          "16:9",
+          "9:16",
+          "1:1",
+          "4:3",
+          "3:4"
+        ],
+        "description": "Canvas aspect preset (create/update). Use ratio OR explicit width+height, not both."
+      },
+      "width": {
+        "type": "integer",
+        "description": "Explicit canvas width px (create/update, omit when ratio is given)."
+      },
+      "height": {
+        "type": "integer",
+        "description": "Explicit canvas height px (create/update, omit when ratio is given)."
+      },
+      "fit": {
+        "type": "string",
+        "enum": [
+          "contain",
+          "cover"
+        ],
+        "description": "update: how existing clips adapt to the new canvas — contain letterboxes, cover fills+crops."
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "update: hide (true) or restore (false) the timeline tab; data is kept. The last visible timeline cannot be hidden."
+      },
+      "activate": {
+        "type": "boolean",
+        "description": "create/duplicate: false keeps the current timeline active (default true; batch create activates the last entry)."
+      },
+      "timelines": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "ratio": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            }
+          }
+        },
+        "description": "create: several timelines at once, each {name, ratio | width+height}."
+      },
+      "track": {
+        "type": "string",
+        "description": "insert: destination video track id/alias."
+      },
+      "startFrame": {
+        "type": "integer",
+        "description": "insert: instance start on the active timeline."
+      },
+      "sourceStartFrame": {
+        "type": "integer",
+        "description": "insert: child timeline source-window in-point (default 0)."
+      },
+      "sourceDurationInFrames": {
+        "type": "integer",
+        "description": "insert: source-window length in child timeline frames (default remaining child duration)."
+      },
+      "playbackRate": {
+        "type": "number",
+        "description": "insert: instance speed from 0.1 to 8 (default 1)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### edit_track
+
+Manage tracks. Actions: list | create | update | delete | tighten | reorder_items. Tracks have stable ids plus C1/C2/V1/A1 aliases that may renumber after insertion. create accepts json with trackType video/audio/caption, optional count/order/name/role/audioRouting. Each caption track owns independent caption data. update changes order/hidden/muted/locked/name/role/audioRouting — locked freezes the lane. delete removes empty tracks only. tighten closes gaps between media clips. reorder_items packs clips on one track in the given item id order (json.itemIds or json.orderedIds array), starting at the earliest startFrame of that set. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "create",
+          "update",
+          "delete",
+          "tighten",
+          "reorder_items"
+        ]
+      },
+      "json": {
+        "type": "string",
+        "description": "JSON for create/update, or for reorder_items: {\"itemIds\":[\"id1\",\"id2\",…]} (aliases orderedIds)."
+      },
+      "trackId": {
+        "type": "string",
+        "description": "Current Cn/Vn/An alias or stable track id (update/delete/tighten/reorder_items)."
+      },
+      "trackIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "delete: remove several empty tracks atomically."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_script
+
+Materialize the current timeline as timeline.md (segment-id-coded Markdown). Track sections (## V1/A1…), source regions (### file), rows: [sN] transcript sentence / [cN] Nf clip / [gap Nf]. Body order = playback order. Read this before apply_script; edit the TEXT then pass it back. Keep the <!-- script-stamp --> comment intact. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "track": {
+        "type": "string",
+        "description": "Optional timeline track alias/id. Omit to keep the existing full-timeline behavior."
+      },
+      "showSilence": {
+        "type": "boolean",
+        "description": "Include editable [silence=Ns] markers. Default false."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### apply_script
+
+Commit an edited timeline.md back to the timeline (atomic; any invalid row rejects the whole script). Edit grammar: strike words inside a [sN] row with ~~word~~ (delete text = delete video); strike or delete a whole row to remove it; reorder rows to reorder clips (frames are re-derived from body order — never write frame numbers); deleting a [gap Nf] row closes the gap. Re-adding previously deleted words restores them. Do NOT change spoken words. preview=true validates and reports without changing anything. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "timelineMd": {
+        "type": "string",
+        "description": "The FULL edited timeline.md content (from read_script, with your edits)."
+      },
+      "preview": {
+        "type": "boolean",
+        "description": "true = validate + report the diff without applying."
+      },
+      "track": {
+        "type": "string",
+        "description": "Optional timeline track alias/id. Use the same scope as read_script."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "timelineMd",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### view_timeline_frames
+
+Render still frames of one timeline composition (pending/draft edits included). frames and seconds are ABSOLUTE TIMELINE coordinates, not source-media positions. Use after visual edits (MG/text, transitions, zoom, filters, aspect, captions) to verify the composed result. Provide exact coordinates or count; with neither, samples evenly (default 4, max 8). Multi-frame results are one labeled contact sheet when possible. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "frames": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 8,
+        "description": "Absolute timeline frame numbers to render."
+      },
+      "seconds": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 8,
+        "description": "Absolute timeline seconds (converted by timeline fps)."
+      },
+      "count": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 8,
+        "description": "Even midpoints across the timeline/range (default 4, max 8)."
+      },
+      "fromSeconds": {
+        "type": "number",
+        "description": "Absolute timeline range start (use with toSeconds)."
+      },
+      "toSeconds": {
+        "type": "number",
+        "description": "Absolute timeline range end (use with fromSeconds)."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Timeline id/prefix; omit for the active timeline in this agent session."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### view_asset_frames
+
+Inspect SOURCE media and see a labeled contact sheet; these coordinates never refer to the composed timeline. Pass assetId for the full pool source, or itemId to constrain sampling to that placed clip’s visible source window (srcInFrame + playbackRate aware). sourceTimesMs, frames, seconds, and fromSeconds/toSeconds are all SOURCE-MEDIA coordinates. With itemId, samples are clamped to its visible source window. Use for source selection/quality inspection; use view_timeline_frames for composed timeline proof. Audio has no frames. Default broad scan = 6 source-window midpoints, max 8. Reuse the contact sheet instead of repeatedly sampling the same range. Finalized uploaded video prefers ffmpeg; blob/image/MG paths use browser or Remotion rendering. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "assetId": {
+        "type": "string",
+        "description": "Media-pool asset id (prefix ok)."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Placed clip id/prefix. Uses its exact visible source window; alternative to assetId."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Timeline containing itemId; omit for the active timeline."
+      },
+      "sourceTimesMs": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 8,
+        "description": "Millisecond offsets in source-media time. Accepts 1–8 values."
+      },
+      "frames": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 8,
+        "description": "Source-media frame numbers (project/source timebase)."
+      },
+      "seconds": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 8,
+        "description": "Source-media seconds."
+      },
+      "count": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 8,
+        "description": "Even source-window midpoints (default 6 for video, max 8)."
+      },
+      "fromSeconds": {
+        "type": "number",
+        "description": "Source-media range start; intersected with the clip window when itemId is used."
+      },
+      "toSeconds": {
+        "type": "number",
+        "description": "Source-media range end; intersected with the clip window when itemId is used."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### browse_library
+
+Browse the OpenChatCut Library (not the user media pool). Categories match Library tabs: motion-graphics, luts, zoom, fx, audio-fx, sound-effects, transitions. Modes: (1) category only → group overview; (2) category+group or query → list of id/name/description; (3) id → full detail + edit_item usage. After discovery, place with edit_item (effect/transition/zoom/audio). Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": {
+        "type": "string",
+        "enum": [
+          "motion-graphics",
+          "luts",
+          "zoom",
+          "fx",
+          "audio-fx",
+          "sound-effects",
+          "transitions"
+        ],
+        "description": "Optional Library tab filter."
+      },
+      "group": {
+        "type": "string",
+        "description": "Optional group within category (e.g. template category, sound group name)."
+      },
+      "query": {
+        "type": "string",
+        "description": "Case-insensitive search over id/name/description/group. Returns a list."
+      },
+      "id": {
+        "type": "string",
+        "description": "Exact library asset id for detail + usage guidance."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Max list results (default 30, max 50)."
+      },
+      "offset": {
+        "type": "number",
+        "description": "List offset (default 0)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### edit_item
+
+Unified item-level operations across video, image, audio, gif, svg, motion-graphic, text, solid, effect, and transition types. Flex crop (flexcrop) is a spatial inset crop — not a timeline trim. Use edit_item updates.transform.crop or transform.flexCrop {left?,right?,top?,bottom?} in composition pixels (Crop Left/Right 0..canvas width, Crop Top/Bottom 0..canvas height; cropped pixels are fully transparent; null clears). The user does not need to say "one pass", "do not recheck frames", or "do not use run_code" — those are the default. "Keep only the dashboard/panel/region" = crop the selected clip (omit itemId or pass "selected") so only that region remains, then stop. Set every needed edge in one update. Do not call run_code, probe_media, e2b, or edit_asset. adds place library items (effect/transition/zoom/MG/SFX), a POOL asset as a clip (type=video|image|gif|svg|audio, assetId=…), OR authored clips without assetId: type=text (text/fontSize/color/fontWeight/align?) or type=solid (color?). updates move/trim/retime by itemId|id. Omit itemId or pass "selected" to target the inspector selection (read_project.timeline.selectedId). If the user names the selected clip, do not pick a neighboring track. Video aliases are bottom-up (V1 = bottom video). Passing assetId on a file-backed clip atomically replaces it from the media pool while preserving item id, track, timeline start, duration, and visual/audio edit state. fromFrame is the canonical timing field (startFrame is accepted as an alias). Unknown fields reject the entire call with "unknown field" + Did you mean. Entries run in adds→updates→deletes order against one private draft; only a fully valid/applied draft is published once. Any validator or draft-apply failure discards it with no partial timeline state. validateOnly runs that same sequential draft without publishing. Mutating calls then go through propose→apply. split_item cuts clips. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "adds": {
+        "type": "array",
+        "description": "effect: {type,targetItemId,assetId,propertyOverrides?}. transition: {type,assetId,incomingItemId,outgoingItemId?,durationInFrames?}. motion-graphic: {type,assetId:library:motion-graphic:*,track?,fromFrame|startFrame?}. audio SFX: {type:\"audio\",assetId:library:sound:*,fromFrame?}. POOL media B-roll (video/image/gif/svg/audio): {type,assetId,track|trackId?,fromFrame|startFrame?,durationInFrames?} — no name/props on pool adds (then update_item_props). Source-window add accepts exact frames {sourceStartFrame?,sourceDurationInFrames?} or time bounds {sourceStartMs?,sourceEndMs?,sourceStartSeconds?,sourceEndSeconds?}; use one representation and do not combine it with durationInFrames/srcInFrame. Authored text: {type:\"text\",text,name?,track?,fromFrame?,durationInFrames?,fontSize?,color?,fontWeight?,align?}. Authored solid: {type:\"solid\",color?,name?,track?,fromFrame?,durationInFrames?}.",
+        "items": {
+          "type": "object"
+        }
+      },
+      "updates": {
+        "type": "array",
+        "description": "Generic clip update — type MUST be the item's actual kind, one of: video, audio, image, gif, svg, text, solid, motion-graphic. NEVER write the literal \"generic\" or \"clip\" as type — they are rejected (\"update type not supported\"). Shape: {type,itemId|id,track|trackId?,fromFrame|startFrame?,durationInFrames?,srcInFrame|sourceStartFrame?,sourceDurationInFrames?,props?,volume?,fadeInSeconds?,fadeOutSeconds?,keyframes?,clearKeyframes?,filters?,transform?,backgroundFill?,backgroundFillStrength?,speed|playbackRate?}. Exact pool replacement: {type,itemId|id,assetId,sourceStartFrame?,sourceDurationInFrames?}; default replacement keeps the original timeline duration and resets the new source in-point to zero. Explicit slip: {operation:\"slip\",itemId|id,deltaInFrames}; positive moves the source window later, negative earlier, while timeline placement/duration stay fixed. The result reports appliedDeltaInFrames, srcInFrame, sourceWindow, clamped/status, or a structured code for unknown/invalid inputs. Media source ops: {operation:\"replace_media\",itemId,src} bakes/swaps the clip to a video shell at the same slot; {operation:\"relink_media\",itemId,src,name?,durationInFrames?,width?,height?} clip-only relink (detaches pool master — use manage_media_pool relink_asset to update pool + all clips). keyframes: {x|y|scale|rotation|opacity|volume:[{frame,value,easing?}]} item-local frames; easing is stored on the left keyframe and controls the following interval. It accepts linear/easeIn/easeOut/easeInOut and CSS aliases ease-in/ease-out/ease-in-out. clearKeyframes:true clears all, or clearKeyframes:\"opacity\" for one prop. filters: {brightness?,contrast?,saturate? 0..2 (1=normal), blur? 0..30 px} on visual clips. transform: {scale? 0.05..16, x?/y? % of canvas, rotation? deg, opacity? 0..1, borderRadius?, crop?|flexCrop?: {left?,right?,top?,bottom?} composition pixels}. Flex crop (flexcrop) = Crop Left/Right/Top/Bottom; left/right 0..canvas width px, top/bottom 0..canvas height px; cropped pixels are fully transparent; null clears. backgroundFill:true fills unused canvas with a blurred copy; backgroundFillStrength sets an exact integer percentage from 0 to 100 and enables the fill when used alone. Only video/image clips on the bottom video track (V1). speed/playbackRate: 0.1..8 on video/audio/gif (retimes duration). No CSS layout fields (left/right/top/bottom/width/height) — position clips via transform or keyframes x/y; flex crop belongs in transform.crop or transform.flexCrop, not top-level left/right/top/bottom. layout INSIDE an MG belongs in its code/props. effect/transition/zoom updates as before (effect assetId swap is for FX stack, not clip media).",
+        "items": {
+          "type": "object"
+        }
+      },
+      "deletes": {
+        "type": "array",
+        "description": "Generic clip: {type,itemId|id,ripple?} (ripple closes the gap). effect: {type:\"effect\",id|effectId,targetItemId?} or clear with targetItemId only. transition: {type:\"transition\",id}. zoom: {type:\"effect\",targetItemId,assetId:\"builtin:zoom\"}.",
+        "items": {
+          "type": "object"
+        }
+      },
+      "ripple": {
+        "type": "boolean",
+        "description": "When true, MG/audio adds push later same-track items (insert). Do not combine with validateOnly."
+      },
+      "validateOnly": {
+        "type": "boolean",
+        "description": "If true, use the same sequential private draft to validate the entire request, then discard it without publishing."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored. The project currently targeted by this agent session is used."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### manage_effects
+
+Shorthand for per-clip WebGL effects. Prefer browse_library followed by edit_item adds:[{type:"effect",targetItemId,assetId}]. action=list returns catalog; add/update/remove mutate the clip effect stack. Also covers LUT assetIds. For zoom/transitions use edit_item. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "add",
+          "update",
+          "remove"
+        ],
+        "description": "What to do."
+      },
+      "targetItemId": {
+        "type": "string",
+        "description": "Clip id to affect (prefix ok). Required for add/update/remove. Must be a video or image clip."
+      },
+      "effectId": {
+        "type": "string",
+        "description": "update/remove: target effect instance id. Omit to target the first effect."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "add: which effect, e.g. \"builtin:fx-luma-key\". Get ids from action=\"list\" or browse_library."
+      },
+      "propertyOverrides": {
+        "type": "object",
+        "description": "add/update: sparse patch. Numeric properties use numbers; colors use RGB arrays in 0..1, e.g. {\"color\":[1,0,0]}. Omit for defaults."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### manage_design_style
+
+Manage the project design style (brand). The applied style is the project brand and drives the colors and fonts used for motion graphics and captions. action: list | get | apply | update | clear | save | delete. list and get are read-only and never need approval; apply/clear and update without presetId change only the reversible ProjectDoc. apply applies a presetId (built-in or user-saved) or custom designSpec to the project; applyToProject defaults to true. save, delete, and update with presetId mutate the persistent global “My Style” library and always require a durable confirmation before execution. save stores designSpec, or the current project style when omitted, in the user library; name is required and scenarios/thumbnailUrl are optional; built-in presets cannot be updated or deleted. designSpec/patch shape: {colors:[{role,value}], fonts:[{family,role}], styleGuide}. role is free-form, for example "accent copper", "text secondary", or "Chinese heading". Common color roles: primary/secondary/accent/background/text; font roles: heading/body; other roles are allowed. styleGuide may contain detailed motion, spring, and stagger specifications. colors/fonts also accept the legacy object form, for example {colors:{primary:"#..."}, fonts:{heading:"Inter"}}; it is normalized to arrays. Read and ProjectDoc actions use the edit-session draft; owned-library writes act on live local data and require one-shot OpenChatCut confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "get",
+          "apply",
+          "update",
+          "clear",
+          "save",
+          "delete"
+        ]
+      },
+      "presetId": {
+        "type": "string",
+        "description": "apply/delete: style id from a built-in or user-saved style; call list first."
+      },
+      "designSpec": {
+        "type": "string",
+        "description": "apply/save: custom style JSON containing colors/fonts/styleGuide."
+      },
+      "patch": {
+        "type": "string",
+        "description": "update: partial JSON containing only fields to change."
+      },
+      "applyToProject": {
+        "type": "boolean",
+        "description": "apply: apply to the current project immediately; default true."
+      },
+      "name": {
+        "type": "string",
+        "description": "save: required saved-style name; replaces an existing style with the same name."
+      },
+      "rename": {
+        "type": "string",
+        "description": "update + presetId: new saved-style name; duplicate names get a numeric suffix."
+      },
+      "scenarios": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "save/update: scenario tags; an empty array clears them."
+      },
+      "scenario": {
+        "type": "string",
+        "description": "list: return only styles containing this scenario tag."
+      },
+      "thumbnailUrl": {
+        "type": "string",
+        "description": "save/update: cover URL for the style picker; not used for generation."
+      },
+      "clearThumbnail": {
+        "type": "boolean",
+        "description": "update + presetId: clear the cover without deleting the style."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": true,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### search_stock_media
+
+Search curated stock platforms for B-roll, photos, sounds, or music; returns unified results with importUrl. kind=any|video|audio|music|image (default video). platforms is an optional comma-separated provider list. Use category to narrow intent and horizontal|square|vertical for orientation; legacy orientation names remain accepted. Unsupported provider/type combinations are skipped with warnings. Official keys are preferred; eligible visual searches can use Firecrawl fallback. On success, pass a result importUrl to download_media or push_asset. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 1
+      },
+      "category": {
+        "type": "string",
+        "description": "Optional category, such as business, nature, technology, whoosh, piano, or ambient."
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "any",
+          "video",
+          "audio",
+          "music",
+          "image"
+        ],
+        "description": "Default video. music searches Freesound and returns importable audio results."
+      },
+      "orientation": {
+        "type": "string",
+        "enum": [
+          "horizontal",
+          "square",
+          "vertical",
+          "landscape",
+          "portrait",
+          "squarish"
+        ],
+        "description": "Preferred horizontal|square|vertical; legacy landscape|portrait|squarish values are accepted."
+      },
+      "platforms": {
+        "type": "string",
+        "description": "Optional comma-separated list: pexels,pixabay,unsplash,freesound."
+      },
+      "limitPerPlatform": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 6,
+        "default": 3,
+        "description": "Max results per platform and media type."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_captions
+
+Read one caption track's state and resolved pages. Pass captionTrackId as C1/C2 or a stable id; omit it for C1. Use list=true to discover every caption track. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "captionTrackId": {
+        "type": "string",
+        "description": "Caption track alias (C1/C2) or stable id. Defaults to C1."
+      },
+      "list": {
+        "type": "boolean",
+        "description": "List caption tracks instead of reading resolved pages."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### edit_captions
+
+Manage the captions/subtitles overlay via a single `action`. Read text first only for display_text (use read_captions); every other action is one direct call.
+- enable / disable: toggle captions data (enable optionally takes a built-in `preset` name).
+- hide_overlay / show_overlay: global captionsHidden flag (toolbar 字幕显示) — hides on-screen caption overlay and text clips without wiping caption data; show_overlay re-enables.
+- template: no arg → list the 21 built-in presets; `templatePreset:"netflix"` → apply one (size/position preserved).
+- style: custom look via `json` — {font|fontFamily,sizePx|fontSizeRatio|fontSize,color,weight|fontWeight,fontStyle,textAlign|align,underline,strike,letterSpacing,lineHeight,strokeColor,strokeWidth,highlightColor,highlightBackground,shadow|shadowStrength,background|backgroundColor,backgroundOpacity,borderRadius,textTransform,displayMode,wordsPerPage,pacing}. Layered over the current template; unmapped fields are reported in `ignored`. sizePx is relative to CANVAS height — on 9:16 vertical (1080×1920) social captions want sizePx ≥ 86 (≈4.5% of height); leave size unset to keep the template default. pacing: 'phrase' (default, readable pages + karaoke highlight) — only use 'word' when the user explicitly wants single-word pop.
+- animation: deterministic burn-in motion shared by preview/export; set `motionPreset` to none, fade-up, pop, word-pop, or karaoke-pulse.
+- layout: place the whole block via `json` {preset:"bottom-center|top-center|center|…3×3", offsetXRatio, offsetYRatio, scale, rotation, opacity}; transforms may also be nested as `{transforms:{scale,rotation,opacity}}`.
+- display_text: per-word DISPLAY overrides via `json` {overrides:[{wordRef, text, hidden, forcePageBreak}], clearOverrides} — get the opaque wordRef from read_captions. wordIndex remains a legacy fallback; wordRef is stable across regrouping and source reorder. Set clear:true on an entry to clear that word by either selector. Doesn't touch the transcript.
+- source_set / source_add / source_remove / source_list: choose which transcribed track(s)/item(s) the captions read (json {mode:"timeline"} for all audible, or {sources:[{trackId|itemId}]}).
+  Multi-source entries accept a 0-based trackOrder. source_update can move an existing source with {sourceId|index, trackOrder}; source_list returns the normalized visual order.
+- language_mode / bilingual: switch caption language — json {mode:"original|translation|bilingual", languageCode} (create the translation first with manage_transcript translate).
+- track: legacy single-source trackId or internal 0-based trackOrder (prefer source_set for visible text sources).
+- layout_policy / positions / source_update: arrange, style, hide, and reorder individual source lanes. preset_* manages user-saved caption styles. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "enable",
+          "disable",
+          "hide_overlay",
+          "show_overlay",
+          "display_text",
+          "template",
+          "style",
+          "animation",
+          "layout",
+          "layout_policy",
+          "positions",
+          "preset_apply",
+          "preset_delete",
+          "preset_list",
+          "preset_rename",
+          "preset_save",
+          "bilingual",
+          "language_mode",
+          "source_add",
+          "source_list",
+          "source_remove",
+          "source_set",
+          "source_update",
+          "track"
+        ],
+        "description": "The caption operation to perform."
+      },
+      "json": {
+        "type": "string",
+        "description": "JSON payload for the action (style fields, layout, display_text overrides, source scope, language). A JSON string or object."
+      },
+      "templatePreset": {
+        "type": "string",
+        "description": "For action=template: built-in preset id/name to apply (omit to list)."
+      },
+      "preset": {
+        "type": "string",
+        "description": "For action=enable: optional built-in preset name (\"auto\"/omit = Plain default). For action=template: legacy alias for templatePreset."
+      },
+      "motionPreset": {
+        "type": "string",
+        "enum": [
+          "none",
+          "fade-up",
+          "pop",
+          "word-pop",
+          "karaoke-pulse"
+        ],
+        "description": "For action=animation: deterministic caption motion preset."
+      },
+      "trackId": {
+        "type": "string",
+        "description": "For action=track only: source track alias (V1/A1) or id. To choose visible caption text prefer source_set."
+      },
+      "trackOrder": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "Internal 0-based timeline track order for action=track only. Call action=track with list=true to inspect the exact order."
+      },
+      "list": {
+        "type": "boolean",
+        "description": "For action=track: list available source tracks instead of changing the source."
+      },
+      "captionTrackId": {
+        "type": "string",
+        "description": "Target caption track alias (C1/C2) or stable id. Defaults to C1."
+      },
+      "captionsItemId": {
+        "type": "string",
+        "description": "Legacy alias for captionTrackId."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### apply_caption_avoidance
+
+Analyze the video layers visible beneath each rendered caption interval and move the effective caption placement away from the speaker. Uses source-timed person/face geometry, preserving already-clear layouts and updating shared layouts, entries, or policy slots according to renderer precedence. Call when the user complains captions cover the face. edit_captions also runs this automatically after enabling or adding sources. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### place_graphics_in_safe_zone
+
+Move overlay graphics (motion-graphic / text / solid clips) into the safe zone of the video underneath:  visual geometry (person segmentation + face) picks the largest empty area in each clip's time window,  and the clip's transform (x/y % of canvas, scale) is written to center it there. Face is never covered. Uses the geometry cache; first call analyzes the underlying video (a few seconds). Call when overlays cover the speaker, or after adding graphics to a talking-head video. Pass itemId to place one clip, or omit to place every overlay graphic. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Optional: place only this clip (full id or unique prefix)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### auto_reframe
+
+Auto-reframe a video clip: sample its frames, detect the subject/focal point per interval, and write reframe keyframes (builtin:zoom __openchatcutReframeCurve) so the crop window follows the subject when the canvas aspect differs (e.g. 16:9→9:16). Clears the clip's existing reframe keyframes first, then re-detects. Browser-only (needs the actual video pixels); returns an error if run headless or if the target isn't a video with a source. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Target video clip id (prefix ok)."
+      },
+      "intervalFrames": {
+        "type": "number",
+        "description": "Sample the video every N frames (default 15, min 1). Smaller = more keyframes, slower."
+      },
+      "sensitivity": {
+        "type": "number",
+        "description": "0..1 focus sharpness: higher snaps the focal point harder to the strongest-detail region (default 0.5)."
+      },
+      "smooth": {
+        "type": "number",
+        "description": "0..1 temporal EMA on focal path (default 0.45). Higher = less crop jitter; 0 = raw per-frame energy."
+      },
+      "maxSamples": {
+        "type": "number",
+        "description": "Cap on seek samples for long clips (default 60)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### update_watermark
+
+Toggle and configure a text watermark overlay on the active timeline. The watermark is a single label pinned to one corner, rendered in the preview and burned into every export. Pass only the fields you want to change (they merge over the current watermark). Set enabled:false to hide it without losing the text. To make it visible, enable it AND give it non-empty text. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Show (true) or hide (false) the watermark."
+      },
+      "text": {
+        "type": "string",
+        "description": "Watermark label text."
+      },
+      "position": {
+        "type": "string",
+        "enum": [
+          "tl",
+          "tr",
+          "bl",
+          "br"
+        ],
+        "description": "Corner: tl=top-left, tr=top-right, bl=bottom-left, br=bottom-right."
+      },
+      "opacity": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "Overlay opacity 0..1 (default 0.7)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### manage_markers
+
+Manage timeline annotation/TODO anchors using the marker-note-v2 contract. A marker is a point when durationFrames=0 or omitted, otherwise a range. scope=project anchors to a ruler frame; scope=item anchors to a clip. action: list all | create one or a markers[] batch | update one or an updates[] batch | delete. For transcript-backed notes, pass transcriptSegments using Active Script [sN] segment ids plus optional notePrefix instead of writing note manually. fromFrame defaults to the start of the first selected segment unless provided explicitly, and the note body is copied from read_script output. color must be one of blue/cyan/fuchsia/green/pink/purple/red/yellow. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Target timeline id or prefix; omit to use the current timeline without switching timelines."
+      },
+      "fromFrame": {
+        "type": "number",
+        "description": "Integer timeline frame to anchor the marker at (required for create unless transcriptSegments is used)."
+      },
+      "durationFrames": {
+        "type": "number",
+        "description": "Range length; 0 or omitted creates a point marker. With transcriptSegments, defaults to covering the selected segments."
+      },
+      "note": {
+        "type": "string",
+        "description": "Marker note text (required for create unless transcriptSegments is used)."
+      },
+      "color": {
+        "type": "string",
+        "enum": [
+          "blue",
+          "cyan",
+          "fuchsia",
+          "green",
+          "pink",
+          "purple",
+          "red",
+          "yellow"
+        ]
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "project",
+          "item"
+        ],
+        "description": "item requires itemId; default project."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Clip id to anchor when scope=item."
+      },
+      "markerId": {
+        "type": "string",
+        "description": "Target marker id for update/delete."
+      },
+      "transcriptSegments": {
+        "type": "string",
+        "description": "Active Script segment ids/ranges from timeline.md, e.g. \"3-4\"; note text is copied from read_script output."
+      },
+      "transcriptTrack": {
+        "type": "string",
+        "description": "Track filter for transcriptSegments, e.g. V1 or A1."
+      },
+      "notePrefix": {
+        "type": "string",
+        "description": "Optional label prefix when transcriptSegments derives the note body."
+      },
+      "markers": {
+        "type": "array",
+        "description": "create batch: each entry is {fromFrame?, note?, color?, durationFrames?, scope?, itemId?, transcriptSegments?, transcriptTrack?, notePrefix?}; omit fromFrame when transcriptSegments determines placement.",
+        "items": {
+          "type": "object"
+        }
+      },
+      "updates": {
+        "type": "array",
+        "description": "update batch: each entry is {id, note?, color?, fromFrame?, durationFrames?}.",
+        "items": {
+          "type": "object"
+        }
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### search_fonts
+
+Search the font catalog the local/headless renderer can load (Google Fonts bundled in-app + locally bundled Chinese foundry faces, source:"bundled"). Use when export reports unsupported fonts or when picking fontFamily for motion-graphic items / captions. Returns canonical family names to use verbatim. Substring-matches family AND native-name aliases (case/punctuation-insensitive) — e.g. "inter", "playfair", "noto sc", "思源黑体", "得意黑", "抖音美好体". loadable=false means catalogued only; prefer a loadable alternative or confirmFontFallback on export. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Substring to match against font family names or native-name aliases."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored; the active project is used."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### read_project
+
+Read the project currently targeted by this agent session, including draft state visible to the current tool context. Default = full overview. Narrow with view:"timeline"|"assets", timelineId, track, fromFrame/toFrame, itemId, or assetId; projectId cannot retarget this call. Unknown timeline/track references return an error. itemId/assetId are filters, so unmatched prefixes return empty item/asset arrays rather than an error. Pass code:true with assetId to include MG source code. Read at session start or after out-of-band changes; between your own edits, apply mutation deltas unless a note requests a reread. Timeline items include canonical media linkage (sourceAssetId, resolvedSourceAssetId, linkStatus), exact source window (srcInFrame, sourceStartFrame, sourceDurationInFrames, sourceEndFrameExclusive), and editable state (keyframes, transform, filters, volume, fadeInFrames, fadeOutFrames). timeline.selectedId / selectedIds / selected is the inspector selection. If the user says "the selected clip" or "this clip", use that id — do not pick an adjacent track. Video aliases are bottom-up: V1 is the bottom video track, not the top lane. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "enum": [
+          "timeline",
+          "assets"
+        ],
+        "description": "'timeline' tracks+items+markers; 'assets' library only. Omit for full overview."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Inspect a non-active timeline by id/prefix without switching."
+      },
+      "track": {
+        "type": "string",
+        "description": "Filter by track alias (e.g. C1, V1, A1)."
+      },
+      "fromFrame": {
+        "type": "number",
+        "description": "Items overlapping this frame or later (half-open with toFrame)."
+      },
+      "toFrame": {
+        "type": "number",
+        "description": "Exclusive upper frame bound."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Item id(s) or prefixes, comma-separated."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Asset id(s) or prefixes, comma-separated."
+      },
+      "code": {
+        "type": "boolean",
+        "description": "Include MG code when assetId is set."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored. Use target_project first; this reads the project targeted by the current session."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "additionalProperties": false,
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### analyze_music
+
+Run the installed on-device Beat This + CLAP models for a media-pool asset or timeline clip and wait for completion. Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed. Reuses a valid cache by default; set force to recompute. This tool never downloads model packs or edits the timeline. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Timeline audio/video clip id (unique prefix accepted). Its media-pool asset and trim/speed mapping are used."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Media-pool asset id (unique prefix accepted). Use itemId instead when timeline mapping is needed."
+      },
+      "force": {
+        "type": "boolean",
+        "description": "Recompute even when a valid cached analysis exists. Defaults to false."
+      },
+      "optional": {
+        "type": "boolean",
+        "description": "When true, missing packs or an analysis failure returns available=false so a larger edit can continue with simpler audio evidence. Invalid targets still fail."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### inspect_music
+
+Read an already-cached local Beat This + CLAP analysis for a media-pool asset or timeline clip. Returns compact BPM, meter, confidence, tags, sections, and bounded beat/downbeat points; embeddings are never exposed. This tool never starts analysis or downloads models. If no cache exists it explains how to install the required packs and analyze first. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Timeline audio/video clip id (unique prefix accepted). Its media-pool asset and trim/speed mapping are used."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Media-pool asset id (unique prefix accepted). Use itemId instead when timeline mapping is needed."
+      },
+      "fromMs": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional source-millisecond range start."
+      },
+      "toMs": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Optional exclusive source-millisecond range end."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### music_edit_plan
+
+Build a deterministic, read-only cut plan from cached music analysis, the BGM clip trim/speed mapping, and overlapping video clips. Returns a bounded frame plan and opaque analysisRef without embeddings or unbounded analysis arrays. Call this to inspect the proposed rhythm edit before sync_cuts_to_music. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "BGM timeline audio/video clip id (unique prefix accepted)."
+      },
+      "timing": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "beat",
+          "downbeat",
+          "section"
+        ],
+        "description": "Cut timing. auto chooses section/downbeat/beat deterministically from density and available analysis."
+      },
+      "density": {
+        "type": "string",
+        "enum": [
+          "sparse",
+          "medium",
+          "dense"
+        ],
+        "description": "How many analyzed timing points to retain."
+      },
+      "fromFrame": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional inclusive timeline-frame range start; defaults to the BGM clip start."
+      },
+      "toFrame": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Optional exclusive timeline-frame range end; defaults to the BGM clip end."
+      },
+      "targetItemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "description": "Optional video clip ids/prefixes to constrain targets. Defaults to video clips overlapping the range."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "timing",
+      "density",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### music_image_plan
+
+Build a deterministic, read-only photo placement plan from cached music analysis and the BGM clip trim/speed mapping. The plan fills the requested range with media-pool images, changing images at beat/downbeat/section boundaries and cycling the selected image order. Call this before sync_images_to_music so the user can review the bounded placement plan. This tool never starts analysis. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "BGM timeline audio/video clip id (unique prefix accepted)."
+      },
+      "timing": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "beat",
+          "downbeat",
+          "section"
+        ],
+        "description": "Photo-change timing. auto chooses section/downbeat/beat deterministically from density and available analysis."
+      },
+      "density": {
+        "type": "string",
+        "enum": [
+          "sparse",
+          "medium",
+          "dense"
+        ],
+        "description": "How many analyzed timing points to retain."
+      },
+      "fromFrame": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional inclusive timeline-frame range start; defaults to the BGM clip start."
+      },
+      "toFrame": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Optional exclusive timeline-frame range end; defaults to the BGM clip end."
+      },
+      "imageAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "description": "Optional image asset ids/prefixes in display order. Defaults to all image assets in media-pool order and cycles when needed."
+      },
+      "track": {
+        "type": "string",
+        "description": "Optional target video track id or alias, default V1. The target range must be empty and unlocked."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "timing",
+      "density",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### browse_local_media
+
+Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed. Reads the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Absolute directory path; omitted means the user home directory."
+      },
+      "query": {
+        "type": "string",
+        "maxLength": 256,
+        "description": "Case-insensitive substring of the relative file or directory path."
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "video",
+          "audio",
+          "image",
+          "gif",
+          "svg"
+        ]
+      },
+      "recursive": {
+        "type": "boolean",
+        "description": "Search subdirectories, up to 12 levels and 10000 entries. Default false."
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10000
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "description": "Page size; default 100."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "idempotentHint": true,
+    "openWorldHint": false
+  }
+}
+```
+
+### import_assets
+
+Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "paths": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Absolute paths of selected media files."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "paths",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### import_asset
+
+Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns the imported pool asset(s); duplicates already in the pool are skipped. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Absolute path to the media file."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "path",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### import_folder
+
+Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Absolute path to the media directory."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "path",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### import_timeline
+
+Import a Final Cut Pro / DaVinci Resolve FCPXML 1.x project or a CMX 3600 EDL into a new editable OpenChatCut timeline. The new timeline runs at the project frame rate; a sequence or list at another rate is converted, rounding cut points to the nearest frame. FCPXML times are converted to the new timeline through the sequence tcStart and every enclosing clip, gap, connected clip or storyline (lanes), compound clip (ref-clip), sync-clip, multicam clip (active angle) and audition (active pick), including rate conform and retime speed; source in-points are measured from each file's own start timecode. EDL events are placed from the list's record start: the hour boundary (e.g. 01:00:00:00) when the first record-in is within a minute of it, otherwise the first record-in, or startTimecode when given. EDLs do not record their frame rate: fps defaults to the current timeline's (29.97/59.94 for drop-frame lists). Referenced files must already exist in the current media pool; matching uses asset id, original path, source path, source filename, and asset name. Unresolved or ambiguous media aborts the import without changing the project. Titles, generators, captions, transitions, effects, disabled clips, and audio of a video file that its video clip cannot carry are not imported; the result lists every skipped element with its reason and warns about approximations. Edits the edit-session draft; pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": {
+        "type": "string",
+        "enum": [
+          "fcpxml",
+          "edl"
+        ],
+        "description": "Interchange format."
+      },
+      "content": {
+        "type": "string",
+        "description": "Complete UTF-8 FCPXML or CMX 3600 EDL document text."
+      },
+      "name": {
+        "type": "string",
+        "description": "Optional imported timeline name."
+      },
+      "activate": {
+        "type": "boolean",
+        "description": "Open the imported timeline after success; default true."
+      },
+      "fps": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 240,
+        "description": "EDL only: frame rate the list was written at, e.g. 25 or 29.97. Default: the current timeline fps."
+      },
+      "startTimecode": {
+        "type": "string",
+        "pattern": "^\\d{1,2}[:;]\\d{2}[:;]\\d{2}[:;.,]\\d{2}$",
+        "description": "EDL only: record timecode that becomes frame 0, e.g. \"01:00:00:00\" or \"00:59:50:00\"."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "format",
+      "content",
+      "editSessionId"
+    ],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": false
+  }
+}
+```
+
+### submit_motion_graphic
+
+Submit a Motion Graphic generation job. Creates ONE motion-graphic asset in the media pool from a brief; does NOT place it on the timeline. After success, place with edit_item adds:[{type:"motion-graphic", assetId, trackId?, fromFrame?}]. Prefer library templates (browse_library / add_motion_graphic) when one fits; use this only for brand-new visuals. Call only when the user clearly asked for a new MG. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "Brief of what the motion graphic should show/animate."
+      },
+      "description": {
+        "type": "string",
+        "description": "Alias of prompt (local)."
+      },
+      "name": {
+        "type": "string",
+        "description": "Short media-pool display name."
+      },
+      "durationSeconds": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 600,
+        "description": "Duration in seconds (default 3)."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "minimum": 15,
+        "maximum": 36000,
+        "description": "Duration in frames (overrides durationSeconds when set)."
+      },
+      "width": {
+        "type": "number",
+        "minimum": 16,
+        "maximum": 8192,
+        "description": "Natural width px (default 1920)."
+      },
+      "height": {
+        "type": "number",
+        "minimum": 16,
+        "maximum": 8192,
+        "description": "Natural height px (default 1080)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "name",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### create_motion_graphic
+
+Alias of submit_motion_graphic (pool-only MG generation). Prefer submit_motion_graphic. Does not place on the timeline — use edit_item after. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "description": {
+        "type": "string",
+        "description": "What the motion graphic should show/animate."
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Alias of description."
+      },
+      "name": {
+        "type": "string",
+        "description": "Short display name."
+      },
+      "durationSeconds": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 600,
+        "description": "Duration in seconds (default 3)."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "minimum": 15,
+        "maximum": 36000
+      },
+      "width": {
+        "type": "number",
+        "minimum": 16,
+        "maximum": 8192
+      },
+      "height": {
+        "type": "number",
+        "minimum": 16,
+        "maximum": 8192
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "name",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### transcribe_track
+
+Transcribe the audio/video clips on a track, attach normalized transcript data, and include word/speaker detail when the provider returns it. Uses the provider selected in Settings (AssemblyAI by default) unless provider is explicitly supplied. Required before find_transcript / clean_script / delete_text / captions when a clip has no transcript yet. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "track": {
+        "type": "string",
+        "description": "Track alias or stable id whose audio to transcribe (default A1)."
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "assemblyai",
+          "local",
+          "openai",
+          "mistral",
+          "deepgram",
+          "groq",
+          "elevenlabs",
+          "cartesia"
+        ],
+        "description": "Optional configured provider override. Omit to use the provider selected in Settings."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### clean_script
+
+Mechanically clean transcribed clips with fixed filler removal and typed pause rules. only may be "fillers", "silence", or "fillers,silence". silence accepts compress:400, restore:500, normalize:500, range:300-800, plus legacy max:400, min:500, 500, and min:300,max:800. Rules that lengthen a pause never exceed the silence present in the recording. Existing maxPauseSeconds/removeFillers calls remain supported. The whole operation is one undo step. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "track": {
+        "type": "string",
+        "description": "Track alias/id whose voiceover clips to clean (default A1). Cleans every transcribed clip on it."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Optional: clean only this one clip instead of the whole track."
+      },
+      "only": {
+        "type": "string",
+        "description": "Run fillers, silence, or both as fillers,silence. Omit for existing default behavior."
+      },
+      "silence": {
+        "type": "string",
+        "description": "Pause rule: compress:400, restore:500, normalize:500, range:300-800, or legacy syntax."
+      },
+      "longSilence": {
+        "type": "number",
+        "description": "Long-pause threshold in ms for the default silence rule (pauses at/above it compress to 200ms). Default 3000 when only includes silence and no silence rule is supplied."
+      },
+      "maxPauseSeconds": {
+        "type": "number",
+        "description": "Compress pauses longer than this down to it (e.g. 0.5). Omit to leave pauses."
+      },
+      "removeFillers": {
+        "type": "boolean",
+        "description": "Strip filler words (default true)."
+      },
+      "cutPadMs": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 500,
+        "description": "Breathing room kept around each word cut, split between the two sides (e.g. 150). Borrowed from silence already in the recording, so it never bleeds into a neighbouring word. 0 or omitted cuts exactly on the word boundary."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### edit_gap
+
+List or edit breath/silence gaps between spoken words on a transcribed clip. Gaps are computed from word timestamps (next.start − prev.end), not separate assets. action=list returns visible gaps with afterWordIndex/gapSeconds/context. action=delete removes one gap (silence→0, later audio ripples earlier). action=cap compresses one gap to maxSeconds (e.g. 0.2). action=restore clears a per-gap override so the original pause returns. Prefer list first to get afterWordIndex. For batch whole-track pause cleanup use clean_script instead. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "delete",
+          "cap",
+          "restore"
+        ],
+        "description": "list=enumerate gaps; delete=remove one gap; cap=compress one gap; restore=undo per-gap override."
+      },
+      "track": {
+        "type": "string",
+        "description": "Track alias/id (default A1) when itemId omitted."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Target clip id (prefix ok). Prefer when multiple clips share a track."
+      },
+      "afterWordIndex": {
+        "type": "number",
+        "description": "Word index AFTER the gap (from list). Required for delete/cap/restore unless afterText is given."
+      },
+      "afterText": {
+        "type": "string",
+        "description": "Locate gap by the spoken phrase that STARTS after the gap (matched in transcript). Alternative to afterWordIndex."
+      },
+      "gapIndex": {
+        "type": "number",
+        "description": "0-based index among listable gaps on the clip (from list). Alternative to afterWordIndex."
+      },
+      "maxSeconds": {
+        "type": "number",
+        "description": "cap only: max pause seconds to keep (e.g. 0.2 or 0.5). Required for cap."
+      },
+      "minGapSeconds": {
+        "type": "number",
+        "description": "list only: min raw gap to include (default 0.25s)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### delete_text
+
+Delete a spoken phrase from a track — "delete text = delete video": the matching words' audio and their time are cut and the clip re-times. If unsure of the exact wording, find_transcript first. ⚠ AUDIO clips only re-time this way; a VIDEO clip always plays continuously from srcInFrame — deleting its words cuts NOTHING (captions keep mirroring the audible speech, so the deletion has no visible effect). To cut a video clip use split_item / edit_item (srcInFrame + durationInFrames); to hide individual words from captions use edit_captions action=display_text. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "track": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string",
+        "description": "The phrase to delete (matched against the transcript)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_transcript
+
+Correct source transcripts and manage translation variants; most actions leave word timing and clip duration unchanged. Eight actions:
+- fix: correct the source transcript. For a word, pass wordIndex or find with the incorrect source text plus text with the correction; only word.text changes. To rename or merge a speaker, pass from with an existing label such as "A" plus to with the new display name; passing another existing label merges them. Only word.speaker changes.
+- clear_edits: restore the clip to the raw transcript by clearing deleted words, silence caps, gap overrides, and play-order overrides (same as the Transcript panel 「还原全部」). Retimes the clip to the full transcript duration.
+- set_play_order: reorder spoken playback via playOrder word-index array (same as dragging speech blocks in the Transcript panel). Pass playOrder:null or clearPlayOrder:true to restore chronological order. Retimes the clip.
+- retry_transcription: force ASR to rerun for the clip and replace its transcript when transcription is stuck, failed, or needs refreshing. Accepts the same optional provider override as transcribe_track.
+- translation_create: translate the full transcript to lang and create or replace a word-level translation variant sharing the source timeline.
+- translation_ensure: idempotently reuse an existing variant for lang or create it otherwise. Prefer this for ordinary translation requests.
+- translation_list: list the source transcript and all translation variants with id/lang/word count.
+- translation_read: read words from a translation variant selected by lang or targetLanguage.
+Translation variants contain translated text only. To display a language in captions, use edit_captions language_mode. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "fix",
+          "clear_edits",
+          "set_play_order",
+          "retry_transcription",
+          "translation_create",
+          "translation_ensure",
+          "translation_list",
+          "translation_read"
+        ],
+        "description": "See the tool description: correct words/speakers, restore edits, set speech play order, rerun ASR, or manage translations."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Target clip item id or unique prefix; omit to use the first transcribed audio/video clip on the track."
+      },
+      "track": {
+        "type": "string",
+        "description": "When itemId is omitted, locate by track alias or stable id; default A1."
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "assemblyai",
+          "local",
+          "openai",
+          "mistral",
+          "deepgram",
+          "groq",
+          "elevenlabs",
+          "cartesia"
+        ],
+        "description": "retry_transcription: optional configured provider override, same values as transcribe_track. Omit to use the provider selected in Settings."
+      },
+      "wordIndex": {
+        "type": "number",
+        "description": "fix word: index of the word to correct; mutually exclusive with find."
+      },
+      "find": {
+        "type": "string",
+        "description": "fix word: incorrect source text that must match exactly one word; mutually exclusive with wordIndex."
+      },
+      "text": {
+        "type": "string",
+        "description": "fix word: corrected text."
+      },
+      "from": {
+        "type": "string",
+        "description": "fix speaker: existing speaker label to rename, such as \"A\" or \"B\"."
+      },
+      "to": {
+        "type": "string",
+        "description": "fix speaker: new display name; passing an existing label merges the speakers, for example \"B\" to \"A\"."
+      },
+      "playOrder": {
+        "type": "array",
+        "items": {
+          "type": "integer"
+        },
+        "description": "set_play_order: word indices in playback order. null with clearPlayOrder clears the override."
+      },
+      "clearPlayOrder": {
+        "type": "boolean",
+        "description": "set_play_order: when true, clear transcriptPlayOrder and restore chronological speech."
+      },
+      "lang": {
+        "type": "string",
+        "description": "translation_create/ensure: target language, such as English, Chinese, or Japanese; translation_read: variant language to read."
+      },
+      "targetLanguage": {
+        "type": "string",
+        "description": "translation_read: alias of lang for selecting the translated language."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_media_pool
+
+Organize the project media pool: list, create/rename/delete empty folders, move assets, rename display names, favorite/unfavorite, delete assets from the pool, or relink an offline/missing master to a new same-origin media path. Folder and metadata actions do not change timeline clips; relink_asset updates the pool asset and every clip that uses that master. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "create_folder",
+          "rename_folder",
+          "delete_empty_folder",
+          "move_assets",
+          "rename_asset",
+          "favorite_assets",
+          "unfavorite_assets",
+          "delete_assets",
+          "relink_asset"
+        ]
+      },
+      "assetIds": {
+        "type": "string",
+        "description": "Comma-separated asset ids/prefixes/names for move_assets, rename_asset (one id), favorite_assets, unfavorite_assets, delete_assets; relink_asset accepts exactly one id."
+      },
+      "folderPath": {
+        "type": "string",
+        "description": "Folder path such as Master/B-roll, or folder id prefix."
+      },
+      "name": {
+        "type": "string",
+        "description": "New folder name for create_folder; cannot contain /. relink_asset: optional display name for the replacement source."
+      },
+      "newName": {
+        "type": "string",
+        "description": "New folder or asset display name for rename actions."
+      },
+      "parentPath": {
+        "type": "string",
+        "description": "Parent folder path for create_folder; defaults to Master."
+      },
+      "targetPath": {
+        "type": "string",
+        "description": "Destination folder path for move_assets; defaults to Master."
+      },
+      "src": {
+        "type": "string",
+        "description": "relink_asset: replacement media path (same-origin /media/uploads/… after re-upload, or another reachable project media URL). Prefer re-upload + finalize_uploaded_asset with the same assetId when replacing local files."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "description": "relink_asset: optional new duration in frames when known."
+      },
+      "width": {
+        "type": "number",
+        "description": "relink_asset: optional pixel width."
+      },
+      "height": {
+        "type": "number",
+        "description": "relink_asset: optional pixel height."
+      },
+      "sourceFilename": {
+        "type": "string",
+        "description": "relink_asset: optional original filename for NLE identity."
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "delete_assets: when any selected asset is still referenced by timeline clips, first call returns needsConfirm; resend with confirm:true to delete pool entries only (clips keep their copied media)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### detect_scenes
+
+Detect visual scene changes in one source video using local FFmpeg acceleration. Pass itemId to inspect a timeline clip (trim and speed are mapped correctly), or assetId for a media-pool-only report. apply=markers creates item-scoped timeline markers; apply=split cuts the clip at every accepted scene boundary as one undoable edit. Default apply=report. Use threshold 0.2 for sensitive detection, 0.3 balanced, 0.45 conservative. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Timeline video/gif item id (prefix accepted). Required for markers/split."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Media-pool video/gif asset id (prefix accepted). Report only unless itemId is also supplied."
+      },
+      "threshold": {
+        "type": "number",
+        "description": "Scene sensitivity threshold 0.05–0.95; lower finds more changes. Default 0.3."
+      },
+      "minSceneSeconds": {
+        "type": "number",
+        "description": "Minimum distance between cuts. Default 0.75s."
+      },
+      "maxScenes": {
+        "type": "number",
+        "description": "Maximum returned/applied boundaries. Default 200, max 500."
+      },
+      "apply": {
+        "type": "string",
+        "enum": [
+          "report",
+          "markers",
+          "split"
+        ],
+        "description": "report (default), markers, or split."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_image
+
+Generate one or more AI images (Fal catalog, gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "enum": [
+          "gpt-image-2",
+          "nano-banana",
+          "image-01",
+          "wavespeed",
+          "byteplus",
+          "grok-imagine",
+          "vrouter",
+          "fal"
+        ],
+        "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+      },
+      "falModel": {
+        "type": "string",
+        "enum": [
+          "nano-banana-2",
+          "nano-banana-pro",
+          "gpt-image-2",
+          "flux-2",
+          "flux-2-pro",
+          "seedream-5-pro",
+          "ideogram-4",
+          "qwen-image-3",
+          "recraft-v3"
+        ],
+        "description": "With model=fal, select a curated Fal image model; omitted uses the saved Fal image default. nano-banana-2: Nano Banana 2 — count 1–4, resolutions 0.5K/1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; nano-banana-pro: Nano Banana Pro — count 1–4, resolutions 1K/2K/4K, up to 14 image refs, image editing, default 1K/auto; gpt-image-2: GPT Image 2 — count 1–4, resolutions 1K, up to 16 image refs, image editing, default 1K/4:3; flux-2: FLUX.2 — count 1–4, resolutions 1K, default 1K/4:3; flux-2-pro: FLUX.2 Pro — count 1–1, resolutions 1K, up to 4 image refs, image editing, default 1K/4:3; seedream-5-pro: Seedream 5.0 Pro — count 1–1, resolutions 1K/2K, up to 10 image refs, image editing, default 2K/auto; ideogram-4: Ideogram 4 — count 1–4, resolutions 1K, default 1K/1:1; qwen-image-3: Qwen Image 3 — count 1–4, resolutions 1K, default 1K/1:1; recraft-v3: Recraft V3 — count 1–1, resolutions 1K, up to 1 image refs, image editing, default 1K/1:1. Model-specific limits are validated before submission."
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Detailed description of the image to generate."
+      },
+      "name": {
+        "type": "string",
+        "description": "Short descriptive asset name shown in the media pool."
+      },
+      "addToTimeline": {
+        "type": "boolean",
+        "description": "Defaults to true. Set false when the user asks to keep the result in the media pool/library only or says not to modify the timeline."
+      },
+      "aspectRatio": {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "4:5",
+          "5:4",
+          "21:9",
+          "auto",
+          "4:1",
+          "1:4",
+          "8:1",
+          "1:8"
+        ],
+        "description": "Native providers default to 16:9; Fal uses its selected model default. Fal-only ratios require a supporting model. Do not send width/height with aspectRatio."
+      },
+      "imageSize": {
+        "type": "string",
+        "enum": [
+          "512px",
+          "1K",
+          "2K",
+          "4K",
+          "0.5K"
+        ],
+        "description": "Native providers default to 1K; Fal uses model defaults and validates its supported sizes. For Fal, 512px is an alias for 0.5K. Use 2K/4K only when explicitly requested. Ignored when custom width/height are set."
+      },
+      "width": {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 3840,
+        "description": "Send only when the user explicitly requests custom pixel dimensions. Requires height and omission of aspectRatio. MiniMax max 2048."
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 3840,
+        "description": "Send only when the user explicitly requests custom pixel dimensions. Requires width and omission of aspectRatio. MiniMax max 2048."
+      },
+      "quality": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "auto"
+        ],
+        "description": "gpt-image-2 only; defaults to high."
+      },
+      "referenceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 16,
+        "description": "Project image asset IDs. Limits: GPT 16, Gemini 14, MiniMax 1 subject reference (MiniMax needs configured R2)."
+      },
+      "maskAssetId": {
+        "type": "string",
+        "description": "gpt-image-2 edits only. Project image mask; transparent pixels are replaced."
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Number of images; defaults to 1. image-01 max 9."
+      },
+      "background": {
+        "type": "string",
+        "enum": [
+          "transparent",
+          "opaque",
+          "auto"
+        ],
+        "description": "gpt-image-2 only. Output background."
+      },
+      "moderation": {
+        "type": "string",
+        "enum": [
+          "low",
+          "auto"
+        ],
+        "description": "gpt-image-2 only. Moderation strictness."
+      },
+      "inputFidelity": {
+        "type": "string",
+        "enum": [
+          "low",
+          "high"
+        ],
+        "description": "gpt-image-2 edits only. Reference-image fidelity."
+      },
+      "outputFormat": {
+        "type": "string",
+        "enum": [
+          "png",
+          "jpeg",
+          "webp"
+        ],
+        "description": "gpt-image-2 only. Defaults to png."
+      },
+      "outputCompression": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "gpt-image-2 only. Send only with outputFormat=jpeg or webp; never send for PNG."
+      },
+      "seed": {
+        "type": "integer",
+        "description": "MiniMax image-01 only. Reproducible random seed."
+      },
+      "promptOptimizer": {
+        "type": "boolean",
+        "description": "MiniMax image-01 only. prompt_optimizer; official default false."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "prompt",
+      "name",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_voice
+
+Generate one TTS audio asset with ElevenLabs, Doubao, MiniMax, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, Cartesia, or V-Scheduler. Creates a media-pool asset only; it does not place or replace timeline items. V-Scheduler can use the default voice saved in Settings. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "type": "string",
+        "enum": [
+          "elevenlabs",
+          "doubao",
+          "minimax",
+          "inworld",
+          "fishaudio",
+          "speechify",
+          "openai",
+          "gemini",
+          "mistral",
+          "cartesia",
+          "vrouter"
+        ],
+        "description": "Required opt-in provider. Use only a provider listed as configured in capabilities. Voice IDs and catalogs are never interchangeable."
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Text to synthesize."
+      },
+      "voiceId": {
+        "type": "string",
+        "description": "Concrete provider-specific voice ID confirmed by the user. May be empty for V-Scheduler when Settings has a default voice, or for MiniMax timbreWeights mixing. Do not invent a preset or reuse an ID from another provider."
+      },
+      "modelId": {
+        "type": "string",
+        "description": "ElevenLabs, Inworld, Fish Audio, Speechify, OpenAI, Gemini, Mistral, or Cartesia only. Omit to use the configured model."
+      },
+      "stability": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "ElevenLabs only. Defaults to 0.5."
+      },
+      "speed": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "description": "ElevenLabs (0.7–1.2), MiniMax (0.5–2), OpenAI, or Cartesia only. Defaults to 1; provider/model support is validated server-side."
+      },
+      "similarityBoost": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "ElevenLabs voice_settings.similarity_boost."
+      },
+      "style": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "ElevenLabs voice_settings.style."
+      },
+      "useSpeakerBoost": {
+        "type": "boolean",
+        "description": "ElevenLabs speaker boost."
+      },
+      "languageCode": {
+        "type": "string",
+        "description": "ElevenLabs or Cartesia only. Provider/model support is validated server-side."
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4294967295,
+        "description": "ElevenLabs reproducibility seed."
+      },
+      "outputFormat": {
+        "type": "string",
+        "description": "ElevenLabs official output enum (for example mp3_44100_128) or OpenAI/Gemini/Mistral/Cartesia provider-supported output format."
+      },
+      "instructions": {
+        "type": "string",
+        "description": "OpenAI or Gemini only. Optional natural-language delivery instructions; send only when requested and supported by the configured model."
+      },
+      "optimizeStreamingLatency": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4,
+        "description": "ElevenLabs latency optimization level."
+      },
+      "enableLogging": {
+        "type": "boolean",
+        "description": "ElevenLabs request logging query control."
+      },
+      "applyTextNormalization": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "description": "ElevenLabs text normalization."
+      },
+      "applyLanguageTextNormalization": {
+        "type": "boolean",
+        "description": "ElevenLabs language text normalization."
+      },
+      "pronunciationDictionaryLocators": {
+        "type": "array",
+        "maxItems": 3,
+        "items": {
+          "type": "object",
+          "properties": {
+            "pronunciationDictionaryId": {
+              "type": "string"
+            },
+            "versionId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pronunciationDictionaryId",
+            "versionId"
+          ]
+        },
+        "description": "ElevenLabs dictionary/version locators."
+      },
+      "previousText": {
+        "type": "string",
+        "description": "ElevenLabs continuity context before this text."
+      },
+      "nextText": {
+        "type": "string",
+        "description": "ElevenLabs continuity context after this text."
+      },
+      "previousRequestIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "ElevenLabs prior request IDs for continuity."
+      },
+      "nextRequestIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "ElevenLabs next request IDs for continuity."
+      },
+      "speedRatio": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "description": "Doubao only. Defaults to 1."
+      },
+      "emotion": {
+        "type": "string",
+        "description": "Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
+      },
+      "emotionScale": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 5,
+        "description": "Doubao only. Requires emotion."
+      },
+      "loudnessRatio": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "description": "Doubao only. Defaults to 1."
+      },
+      "pitch": {
+        "type": "number",
+        "minimum": -12,
+        "maximum": 12,
+        "description": "Doubao: post-process semitones. MiniMax: native voice_setting.pitch (-12–12)."
+      },
+      "volume": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 10,
+        "description": "MiniMax only. voice_setting.vol (>0–10). Defaults to 1."
+      },
+      "performancePrompt": {
+        "type": "string",
+        "maxLength": 200,
+        "description": "Doubao only. Natural-language performance direction."
+      },
+      "explicitDialect": {
+        "type": "string",
+        "enum": [
+          "dongbei",
+          "shaanxi",
+          "sichuan"
+        ],
+        "description": "Doubao only; supported by the Vivi preset."
+      },
+      "sampleRate": {
+        "type": "integer",
+        "description": "MiniMax audio_setting.sample_rate. One of 8000/16000/22050/24000/32000/44100."
+      },
+      "bitrate": {
+        "type": "integer",
+        "description": "MiniMax MP3 bitrate. One of 32000/64000/128000/256000."
+      },
+      "audioFormat": {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ],
+        "description": "MiniMax audio output format."
+      },
+      "channel": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2,
+        "description": "MiniMax output channels (1 = mono, 2 = stereo)."
+      },
+      "forceCbr": {
+        "type": "boolean",
+        "description": "MiniMax constant bitrate; true requires stream=true and MP3."
+      },
+      "stream": {
+        "type": "boolean",
+        "description": "MiniMax HTTP streaming transport. OpenChatCut consumes it server-side and saves one durable audio asset."
+      },
+      "excludeAggregatedAudio": {
+        "type": "boolean",
+        "description": "MiniMax stream option. Requires stream=true; concatenates incremental chunks."
+      },
+      "languageBoost": {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans",
+          "auto"
+        ],
+        "description": "MiniMax official language_boost enum."
+      },
+      "textNormalization": {
+        "type": "boolean",
+        "description": "MiniMax text_normalization."
+      },
+      "latexRead": {
+        "type": "boolean",
+        "description": "MiniMax latex_read."
+      },
+      "pronunciations": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "MiniMax pronunciation_dict.tone entries."
+      },
+      "timbreWeights": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 4,
+        "items": {
+          "type": "object",
+          "properties": {
+            "voiceId": {
+              "type": "string"
+            },
+            "weight": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "required": [
+            "voiceId",
+            "weight"
+          ]
+        },
+        "description": "MiniMax multi-voice timbre mix."
+      },
+      "voiceModify": {
+        "type": "object",
+        "properties": {
+          "pitch": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "intensity": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "timbre": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "spacious_echo",
+              "auditorium_echo",
+              "lofi_telephone",
+              "robotic"
+            ]
+          }
+        },
+        "description": "MiniMax voice_modify controls."
+      },
+      "subtitleEnable": {
+        "type": "boolean",
+        "description": "MiniMax subtitle generation flag; the JSON response is downloaded as a durable sidecar."
+      },
+      "subtitleType": {
+        "type": "string",
+        "enum": [
+          "sentence",
+          "word",
+          "word_streaming"
+        ],
+        "description": "MiniMax subtitle granularity. Requires subtitleEnable; word_streaming also requires stream."
+      },
+      "name": {
+        "type": "string",
+        "description": "Optional media-pool asset name."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "provider",
+      "text",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_sound
+
+Generate one sound-effect audio asset in the media pool: ElevenLabs synthesizes synchronously from a text prompt; Sonilo submits an asynchronous SFX job from a project video asset (the rendered cut, up to 3 minutes) with no prompt. Sonilo returns a jobId for track_progress. Does not place timeline items. For ordinary whooshes, clicks, impacts, dings, and similar editing sounds, use the existing library first. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "provider": {
+        "type": "string",
+        "enum": [
+          "elevenlabs",
+          "sonilo"
+        ],
+        "description": "Defaults to elevenlabs (text prompt). sonilo generates video-matched SFX from sourceAssetId instead of a prompt."
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Detailed sound description. Required for elevenlabs; not used by sonilo."
+      },
+      "durationSeconds": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 30,
+        "description": "ElevenLabs only. Optional 0.5–30 seconds; omit to let ElevenLabs choose the duration."
+      },
+      "promptInfluence": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "ElevenLabs only. Prompt adherence; defaults to 0.3."
+      },
+      "loop": {
+        "type": "boolean",
+        "description": "ElevenLabs only. Create a seamless loop; requires the configured eleven_text_to_sound_v2 model."
+      },
+      "outputFormat": {
+        "type": "string",
+        "description": "ElevenLabs only. Official codec_sample-rate_bitrate enum, e.g. mp3_44100_128, opus_48000_128, pcm_44100."
+      },
+      "sourceAssetId": {
+        "type": "string",
+        "description": "Sonilo only. Project video asset (the rendered cut, ≤3 minutes) the SFX are generated from."
+      },
+      "name": {
+        "type": "string",
+        "description": "Optional media-pool asset name."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_music
+
+Submit a Mureka, MiniMax, Atlas Cloud, Sonilo, or V-Scheduler music job. V-Scheduler uses the selected V-Music model for text-to-music and passes generation errors through. Results are saved to the media pool. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "maxLength": 4000,
+        "description": "Style/control prompt. V-Scheduler/V-Music accepts up to 4000 characters; other provider-specific limits are validated."
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "mureka",
+          "minimax",
+          "atlas",
+          "sonilo",
+          "vrouter"
+        ],
+        "description": "Defaults to mureka."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "instrumental",
+          "song",
+          "prompt-song",
+          "soundtrack",
+          "track",
+          "t2m",
+          "cover",
+          "v2m"
+        ],
+        "description": "Mureka: instrumental/song/prompt-song/soundtrack/track. MiniMax: t2m/cover. Atlas Cloud: t2m. Sonilo: v2m (video-to-music)."
+      },
+      "lyrics": {
+        "type": "string",
+        "maxLength": 5000,
+        "description": "Mureka song/track or MiniMax t2m/cover lyrics. Provider-specific limits are validated."
+      },
+      "isInstrumental": {
+        "type": "boolean",
+        "description": "MiniMax or Atlas Cloud t2m only. Force instrumental."
+      },
+      "lyricsOptimizer": {
+        "type": "boolean",
+        "description": "MiniMax t2m only. Auto-generate lyrics from prompt."
+      },
+      "sampleRate": {
+        "type": "integer",
+        "description": "MiniMax or Atlas Cloud only. One of 16000/24000/32000/44100; default 44100."
+      },
+      "bitrate": {
+        "type": "integer",
+        "description": "MiniMax or Atlas Cloud only. One of 32000/64000/128000/256000; default 256000."
+      },
+      "audioFormat": {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "wav",
+          "pcm",
+          "flac"
+        ],
+        "description": "MiniMax/Atlas Cloud: mp3/wav/pcm. Mureka: mp3/wav/flac. Default mp3."
+      },
+      "duration": {
+        "type": "number",
+        "minimum": 10,
+        "description": "V-Scheduler/V-Music only. Duration in seconds; defaults to 30 and is capped by the selected model/service."
+      },
+      "negativePrompt": {
+        "type": "string",
+        "maxLength": 4000,
+        "description": "V-Scheduler/V-Music only. Content to avoid."
+      },
+      "seed": {
+        "type": "integer",
+        "description": "V-Scheduler/V-Music only. Reproducibility seed."
+      },
+      "bpm": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 300,
+        "description": "V-Scheduler/V-Music only. Target tempo."
+      },
+      "key": {
+        "type": "string",
+        "description": "V-Scheduler/V-Music only. Musical key, when supported by the selected model."
+      },
+      "timeSignature": {
+        "type": "string",
+        "description": "V-Scheduler/V-Music only. Meter such as 4/4, when supported by the selected model."
+      },
+      "referenceAssetId": {
+        "type": "string",
+        "description": "MiniMax cover only. Project audio asset id; mutually exclusive with coverFeatureId."
+      },
+      "coverFeatureId": {
+        "type": "string",
+        "description": "MiniMax cover only. Preprocessed feature ID; requires lyrics and excludes referenceAssetId."
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3,
+        "description": "Mureka only. Result count; defaults to 1 (official API default is 2)."
+      },
+      "stream": {
+        "type": "boolean",
+        "description": "Mureka only. Enable provider streaming phase; OpenChatCut still saves durable final files."
+      },
+      "styles": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "pop",
+            "rock",
+            "jazz",
+            "r&b",
+            "edm",
+            "ambient",
+            "folk",
+            "latin",
+            "k-pop",
+            "j-pop",
+            "house",
+            "gospel",
+            "lo-fi"
+          ]
+        },
+        "description": "Mureka prompt-song styles."
+      },
+      "gender": {
+        "type": "string",
+        "enum": [
+          "female",
+          "male"
+        ],
+        "description": "Mureka lyrics-song preferred vocal gender."
+      },
+      "referenceId": {
+        "type": "string",
+        "description": "Mureka song/prompt-song reference ID."
+      },
+      "instrumentalId": {
+        "type": "string",
+        "description": "Mureka instrumental file ID; use instead of prompt."
+      },
+      "vocalId": {
+        "type": "string",
+        "description": "Mureka cloned vocal ID."
+      },
+      "melodyId": {
+        "type": "string",
+        "description": "Mureka lyrics-song melody ID; cannot combine with other controls."
+      },
+      "sourceAssetId": {
+        "type": "string",
+        "description": "Mureka soundtrack image/video asset, track-mode audio asset, or Sonilo v2m video asset (the rendered cut, ≤6 minutes)."
+      },
+      "audioStartMs": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Mureka soundtrack segment start in ms."
+      },
+      "audioEndMs": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Mureka soundtrack segment end in ms; range must be at least 3000ms."
+      },
+      "songId": {
+        "type": "string",
+        "description": "Mureka track source song ID; excludes sourceAssetId."
+      },
+      "trackType": {
+        "type": "string",
+        "enum": [
+          "Vocals",
+          "Instrumental",
+          "Drums",
+          "Bass",
+          "Guitar",
+          "Keyboard",
+          "Percussion",
+          "Strings",
+          "Synth",
+          "FX",
+          "Brass",
+          "Woodwinds"
+        ],
+        "description": "Mureka track/stem type."
+      },
+      "generateStartMs": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Mureka track source segment start in ms."
+      },
+      "generateEndMs": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Mureka track source segment end in ms."
+      },
+      "vocalGender": {
+        "type": "string",
+        "enum": [
+          "female",
+          "male"
+        ],
+        "description": "Mureka Vocals track only."
+      },
+      "name": {
+        "type": "string",
+        "description": "Optional media-pool asset name."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_video
+
+Submit a V-Scheduler, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "model": {
+        "type": "string",
+        "enum": [
+          "seedance2",
+          "kling",
+          "hailuo",
+          "byteplus",
+          "grok-imagine-video",
+          "ofox",
+          "vrouter",
+          "fal"
+        ],
+        "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet."
+      },
+      "falModel": {
+        "type": "string",
+        "enum": [
+          "seedance-2.5",
+          "seedance-2.0",
+          "kling-v3-standard",
+          "kling-v3-pro",
+          "kling-o3-standard",
+          "kling-o3-pro",
+          "veo-3.1",
+          "veo-3.1-fast",
+          "wan-3.0",
+          "minimax-h3-max",
+          "pixverse-v6"
+        ],
+        "description": "With model=fal, select a curated Fal video model; omitted uses the saved Fal video default. seedance-2.5: Seedance 2.5 — audio toggle supported, resolutions 480p/720p, durations 4–30s, up to 30 image refs, up to 10 video refs, up to 10 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; seedance-2.0: Seedance 2.0 — audio toggle supported, resolutions 480p/720p/1080p/4k, durations 4–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, first frame/last frame/reference mode, default 720p/5s/auto; kling-v3-standard: Kling 3.0 Standard — audio toggle supported, resolutions 720p, durations 3–15s, first frame/last frame, default 720p/5s/16:9; kling-v3-pro: Kling 3.0 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, first frame/last frame, default 1080p/5s/16:9; kling-o3-standard: Kling O3 Standard — audio toggle supported, resolutions 720p, durations 3–15s, up to 4 image refs, reference mode, default 720p/5s/16:9; kling-o3-pro: Kling O3 Pro — audio toggle supported, resolutions 1080p, durations 3–15s, up to 4 image refs, reference mode, default 1080p/5s/16:9; veo-3.1: Veo 3.1 — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; veo-3.1-fast: Veo 3.1 Fast — audio toggle supported, resolutions 720p/1080p/4k, durations 4/6/8s, first frame, default 720p/8s/16:9; wan-3.0: Wan 3.0 — audio toggle supported, resolutions 480p/720p/1080p, durations 5/10s, first frame/last frame, default 1080p/5s/adaptive; minimax-h3-max: MiniMax H3 Max — no audio toggle, resolutions 480p/768p/1080p, durations 5–15s, up to 9 image refs, up to 3 video refs, up to 3 audio refs, reference mode, default 768p/5s/16:9; pixverse-v6: PixVerse V6 — audio toggle supported, resolutions 360p/540p/720p/1080p, durations 1–15s, first frame, default 720p/5s/16:9. Omit duration/resolution to use model defaults."
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Required for normal generation and Kling intelligence; omit for Kling customize."
+      },
+      "name": {
+        "type": "string"
+      },
+      "durationSeconds": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API)."
+      },
+      "ratio": {
+        "type": "string",
+        "description": "Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. ofox: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9, 9:21. Do not send for hailuo."
+      },
+      "resolution": {
+        "type": "string",
+        "enum": [
+          "480p",
+          "512p",
+          "720p",
+          "1080p",
+          "4k",
+          "768p",
+          "360p",
+          "540p"
+        ],
+        "description": "Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p. ofox: 480p/720p(default)/1080p, per-model support enforced by the API."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "std",
+          "pro"
+        ],
+        "description": "Kling only; std=720p, pro=1080p."
+      },
+      "firstFrame": {
+        "type": "string",
+        "description": "Project image asset ID, asset:// ID, short unique ID prefix, or same-project asset path."
+      },
+      "lastFrame": {
+        "type": "string",
+        "description": "Project image asset reference; requires firstFrame. Supported on seedance2, kling, hailuo, and ofox (not with multi-ref on seedance2/ofox)."
+      },
+      "refImages": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "refVideos": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "refAudios": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "refVideoMode": {
+        "type": "string",
+        "enum": [
+          "feature",
+          "base"
+        ],
+        "description": "Kling only with refVideos. feature (default)=motion/camera/style guide; base=edit that source clip (keep_original_sound)."
+      },
+      "promptOptimizer": {
+        "type": "boolean",
+        "description": "Hailuo only. MiniMax prompt_optimizer; default true. Set false for more literal prompts."
+      },
+      "fastPretreatment": {
+        "type": "boolean",
+        "description": "Hailuo only. MiniMax fast_pretreatment when promptOptimizer is true; default false."
+      },
+      "generateAudio": {
+        "type": "boolean",
+        "description": "Seedance/BytePlus/OFox. Generate synchronized audio; default true for models that support audio."
+      },
+      "seed": {
+        "type": "integer",
+        "description": "Seedance/BytePlus/OFox. Random seed; determinism depends on the model."
+      },
+      "cameraFixed": {
+        "type": "boolean",
+        "description": "Seedance/BytePlus only. Lock camera motion; default false."
+      },
+      "watermark": {
+        "type": "boolean",
+        "description": "Seedance/BytePlus only. Add provider watermark; default false."
+      },
+      "returnLastFrame": {
+        "type": "boolean",
+        "description": "Seedance/BytePlus only. Save the returned last frame as an additional image asset."
+      },
+      "executionExpiresAfter": {
+        "type": "integer",
+        "minimum": 3600,
+        "maximum": 259200,
+        "description": "Seedance/BytePlus only. Task expiry in seconds."
+      },
+      "priority": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9,
+        "description": "Seedance/BytePlus only. Queue priority."
+      },
+      "multiPrompts": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 6,
+        "items": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string"
+            },
+            "duration": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "index": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "prompt",
+            "duration",
+            "index"
+          ]
+        },
+        "description": "Kling customize storyboard; indexes start at 1 and durations sum to durationSeconds."
+      },
+      "shotType": {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligence"
+        ],
+        "description": "Kling multi-shot mode."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "model",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### track_progress
+
+Inspect or wait for asynchronous generation jobs returned by Sonilo submit_sound, submit_music, and submit_video. Successful results are added to the project media pool exactly once. For target=transcription, poll automatic ingest-time ASR readiness by assetIds instead of jobIds; a succeeded asset then carries a word-level transcript that clips inherit. target=upload checks whether each asset's media file is reachable (blob placeholders report running until relinked to /media/uploads); target=visual-analysis polls contact-sheet warm / frame-readiness jobs (enqueue on ingest; use view_asset_frames / view_timeline_frames for actual vision). Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "params",
+          "status",
+          "wait",
+          "resume"
+        ],
+        "description": "params returns settings, status checks immediately, wait polls, and resume retries only a failed result download without regenerating."
+      },
+      "target": {
+        "type": "string",
+        "enum": [
+          "generation",
+          "transcription",
+          "upload",
+          "visual-analysis"
+        ],
+        "description": "Which async task kind to inspect: generation (default), transcription, upload, or visual-analysis."
+      },
+      "jobIds": {
+        "type": "string",
+        "minLength": 1,
+        "description": "One or more comma-separated generation job IDs."
+      },
+      "assetIds": {
+        "type": "string",
+        "description": "Comma-separated asset IDs/prefixes, for target=transcription / upload / visual-analysis."
+      },
+      "timeoutSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 3600,
+        "description": "wait timeout; defaults to 90 seconds."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### rerun_generation
+
+Explicitly rerun one previously tracked generation operation with its complete original submit args. Exact operation/job IDs win; a prefix is accepted only when unique. Legacy summary-only rows and ambiguous prefixes are rejected before any provider call. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "jobId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact operation/job ID or a unique prefix. Ambiguous prefixes are rejected with distinguishable candidate IDs."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "jobId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_export
+
+Export the active timeline synchronously as MP4/WebM video, MP3/WAV audio, SRT/TXT subtitles, or an FCPXML project (format=xml) for Premiere / Resolve / FCP. When MG/captions reference fonts the renderer cannot load, the first call returns unsupportedFonts — relay to the user and retry with confirmFontFallback=true only after they accept. For XML, pass nleFormat=fcp_xml (default, Premiere) or fcp_xml_resolve (DaVinci Resolve). Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": {
+        "type": "string",
+        "enum": [
+          "video",
+          "audio",
+          "subtitles",
+          "xml"
+        ]
+      },
+      "codec": {
+        "type": "string",
+        "enum": [
+          "h264",
+          "vp8",
+          "mp3",
+          "wav"
+        ],
+        "description": "Video: h264 (default) or vp8. Audio: mp3 (default) or wav."
+      },
+      "subtitleFormat": {
+        "type": "string",
+        "enum": [
+          "srt",
+          "txt"
+        ],
+        "description": "Defaults to srt."
+      },
+      "captionTrackId": {
+        "type": "string",
+        "description": "For subtitle export: C1/C2 alias or stable caption track id. Defaults to C1."
+      },
+      "nleFormat": {
+        "type": "string",
+        "enum": [
+          "fcp_xml",
+          "fcp_xml_resolve"
+        ],
+        "description": "NLE XML format for format=xml. Defaults to fcp_xml (Premiere). Use fcp_xml_resolve for DaVinci Resolve."
+      },
+      "name": {
+        "type": "string",
+        "description": "Download filename."
+      },
+      "fps": {
+        "type": "number",
+        "description": "Video output fps: 24|25|30|50|60. Omit to match timeline. Frame counts stay; real duration scales."
+      },
+      "resolution": {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "description": "Video max-height ladder (default timeline size). Scales width to keep aspect."
+      },
+      "videoBitrate": {
+        "type": "integer",
+        "minimum": 1000000,
+        "maximum": 80000000,
+        "description": "Video only. Exact output bitrate in bits per second; omit for the renderer default."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Export a non-active timeline by id/prefix without switching (video/audio/xml)."
+      },
+      "startFrame": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "endFrameExclusive": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "startSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Legacy; prefer startFrame."
+      },
+      "endSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Legacy; prefer endFrameExclusive."
+      },
+      "confirmFontFallback": {
+        "type": "boolean",
+        "description": "Required true when export would burn unsupported fonts. First call without it returns the unsupported list."
+      },
+      "motionGraphicRenderKeys": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Advanced XML export: render keys returned by export_motion_graphic_prores with filenameMode=xml. Matching MG clips become media references; other MG clips stay placeholders."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### download_media
+
+Download a media file from a public URL into the project media pool. Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override. Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset. Serial: each call has a 75s window to start URLs, so pass at most 3 urls per call and call again for the rest. An unreachable host is a failed row, never a remote fallback. Each successful row carries probe (duration, dimensions, fps, audio/video tracks, codecs, qualityRisks) measured by the local ffprobe at import time — do not call probe_media for a file you just downloaded. Bytes that are not readable media fail as not_media and never enter the pool. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "uri"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        ],
+        "description": "HTTP(S) URL or array of URLs."
+      },
+      "name": {
+        "type": "string",
+        "description": "Override display name. Ignored for batch (>1 url)."
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "audio",
+          "gif",
+          "image",
+          "svg",
+          "video"
+        ],
+        "description": "Asset type override; auto-detected from Content-Type / URL extension when omitted."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored because OpenChatCut uses the active project."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "url",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### push_asset
+
+Register a public http(s) media URL as a project asset. filePath = public URL (string or array). Local-dev downloads into /media/uploads when possible. type may be motion-graphic (with duration / durationInFrames / properties). effect/transition types are not pool media here. Do NOT pass local filesystem paths. Returns { failed, succeeded, results: [{ assetId, name, type, success } | { error, success:false }] }. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "filePath": {
+        "description": "Public http(s) media URL or array of URLs. Local paths are not accepted."
+      },
+      "name": {
+        "type": "string",
+        "description": "Override display name. Ignored for batch (>1 filePath)."
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "audio",
+          "effect",
+          "gif",
+          "image",
+          "motion-graphic",
+          "svg",
+          "transition",
+          "video"
+        ],
+        "description": "Asset type override; auto-detected from extension when omitted."
+      },
+      "duration": {
+        "type": "number",
+        "description": "Duration in seconds (motion-graphic if durationInFrames omitted; also media fallback)."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "description": "Duration in frames at timeline fps (motion-graphic alternative to duration)."
+      },
+      "width": {
+        "type": "number"
+      },
+      "height": {
+        "type": "number"
+      },
+      "properties": {
+        "type": "array",
+        "description": "Motion-graphic editable properties (objects with key, label, type, defaultValue).",
+        "items": {}
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored because OpenChatCut uses the active project."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "filePath",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### import_url_asset
+
+Legacy alias of push_asset: register a public http(s) media URL as a project asset. Prefer download_media to fetch into the library or push_asset to register a URL. Same local behaviour. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Public http(s) URL of the media file."
+      },
+      "name": {
+        "type": "string",
+        "description": "Display name; defaults to the URL filename."
+      },
+      "kind": {
+        "type": "string",
+        "enum": [
+          "video",
+          "image",
+          "audio"
+        ],
+        "description": "Override kind detection when the URL extension is ambiguous."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "url",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_shader
+
+Generate a custom WebGL fragment shader from a natural-language prompt. type=effect: a per-clip effect (single input u_input) → returns effectId; apply with edit_item adds:[{type:"effect",targetItemId,assetId:<effectId>}]. type=transition: a clip-to-clip transition (two inputs u_outgoing/u_incoming + u_progress) → returns a transitionId (custom:tr-*); apply with edit_item adds:[{type:"transition",assetId:<transitionId>,incomingItemId:<later clip at the cut>}]. Either way the GLSL is statically validated + compile-checked, then registered; this call only submits/registers — applying is a separate call the agent makes after the user explicitly asks. referenceAssetIds lets the generator learn from project assets: image assets are looked at as visual inspiration; ONE effect/transition asset (kind matching type) contributes its shader code as a style reference. Use for one-off custom looks/transitions not in browse_library. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "effect",
+          "transition"
+        ],
+        "description": "Whether the shader is a per-clip effect (color, blur, mask, LUT-style grade, distortion) or a between-clip transition (crossfade, wipe, slide, 3D cube)."
+      },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Natural-language description of the shader. Restate the user's intent in one concrete sentence — e.g. \"Chromatic aberration with RGB split\", \"Cinematic teal-orange color grade\", \"Smooth crossfade with soft edge\"."
+      },
+      "name": {
+        "type": "string",
+        "description": "Asset name shown in the library. Defaults to a name derived from the prompt."
+      },
+      "referenceAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Project asset ids the generator should learn from. Image asset id → model LOOKS AT it as visual inspiration (e.g. a still to match for a LUT, a screenshot to mimic for a glitch effect). Effect or transition asset id → its shader code is reused as a style reference. At most one effect/transition reference per submit, and its kind must match `type`. Pass full ids or short id prefixes."
+      },
+      "properties": {
+        "type": "array",
+        "description": "Optional adjustable numeric uniforms exposed as sliders; each becomes a u_<key> float uniform in the shader. Omit for a fixed effect.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "GLSL identifier; becomes u_<key>."
+            },
+            "label": {
+              "type": "string",
+              "description": "zh UI label."
+            },
+            "default": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "key"
+          ]
+        }
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "type",
+      "prompt",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### find_highlights
+
+Create short-form highlights from long-form content: read the word-level transcript of a timeline clip, use an LLM to select the strongest self-contained moments, duplicate each into a vertical sequence (default 9:16), and trim it to the selected frame range. The clip must be transcribed first with transcribe_track. Returns each sequence id, title, and frame range. Falls back to information-density heuristics if LLM selection fails. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer",
+        "description": "Number of short videos to create; default 3."
+      },
+      "ratio": {
+        "type": "string",
+        "enum": [
+          "9:16",
+          "16:9",
+          "1:1",
+          "4:3",
+          "3:4"
+        ],
+        "description": "Short-video canvas ratio; default 9:16."
+      },
+      "topic": {
+        "type": "string",
+        "description": "Optional: select only highlights related to this topic."
+      },
+      "instruction": {
+        "type": "string",
+        "description": "Optional selection preference, such as strongest emotional conflict or moments containing data points."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Optional transcribed video/audio clip; defaults to the clip with the most words."
+      },
+      "minSeconds": {
+        "type": "number",
+        "description": "Minimum duration per highlight; default 3 seconds."
+      },
+      "maxSeconds": {
+        "type": "number",
+        "description": "Maximum duration per highlight; default 60 seconds."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### submit_render_job
+
+Render the active timeline ASYNCHRONOUSLY as MP4/WebM video or MP3/WAV audio. Returns immediately with a renderId; the job also appears in the editor top-right export queue with progress and cancellation. Poll track_export for status/progress and the download URL. Prefer this over the synchronous submit_export for long timelines. Optional frame boundaries use a half-open [startFrame, endFrameExclusive) range. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "format": {
+        "type": "string",
+        "enum": [
+          "video",
+          "audio"
+        ],
+        "description": "Defaults to video."
+      },
+      "codec": {
+        "type": "string",
+        "enum": [
+          "h264",
+          "vp8",
+          "mp3",
+          "wav"
+        ],
+        "description": "Video: h264 (default) or vp8. Audio: mp3 (default) or wav."
+      },
+      "resolution": {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "description": "Video only. Scale by the short side; omit to use the timeline size."
+      },
+      "fps": {
+        "type": "integer",
+        "description": "Video only. Target frame rate, one of 24/25/30/50/60; omit to use the timeline fps."
+      },
+      "videoBitrate": {
+        "type": "integer",
+        "minimum": 1000000,
+        "maximum": 80000000,
+        "description": "Video only. Exact output bitrate in bits per second; omit for the renderer default."
+      },
+      "name": {
+        "type": "string",
+        "description": "Download filename."
+      },
+      "startFrame": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "endFrameExclusive": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "startSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Legacy; prefer startFrame."
+      },
+      "endSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Legacy; prefer endFrameExclusive."
+      },
+      "saveToMediaPool": {
+        "type": "boolean",
+        "description": "When true, keep the completed file in My Media and record its source Sequence and source asset ranges. Defaults to false."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### track_export
+
+Inspect render/export jobs started by submit_render_job. action=status: return current status. action=wait: poll until terminal or timeoutSeconds elapses. Use one bounded wait; if waitExpired=true, report the background status and end the turn instead of calling wait again or starting another export. Pass renderIds when available. If omitted, latest defaults to true. Returns status, progress, and — when completed — a downloadUrl plus mediaPoolStatus when saveToMediaPool was requested. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "status",
+          "wait"
+        ],
+        "description": "status or wait"
+      },
+      "renderIds": {
+        "type": "string",
+        "description": "Comma-separated render job IDs or prefixes returned by submit_render_job."
+      },
+      "latest": {
+        "type": "boolean",
+        "description": "When true, read the newest matching render job. Defaults to true when renderIds is omitted."
+      },
+      "onlyActive": {
+        "type": "boolean",
+        "description": "When latest=true, return only currently rendering jobs. Use false/omit to include recently completed or failed renders."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Optional timeline ID or prefix to narrow latest lookup."
+      },
+      "timeoutSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 3600,
+        "description": "For action=wait, maximum seconds before returning the current non-terminal status. Defaults to 20. Use 0 only when the caller owns a sufficiently long tool deadline."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### read_export_history
+
+List recent finished exports (most recent first): filename, format, codec, size, frame range, and time. Use to remind the user what they have already exported this session and earlier. Read-only; does not export anything. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Max records to return; defaults to 20."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### verify_export
+
+Quality-check a COMPLETED video export before delivery. Pass renderId from submit_render_job/track_export, or a /media/uploads/ export src. Checks stream presence, duration, resolution, frame rate, black/frozen frames, long silence, and audio peaks. Returns a structured issue list plus a labeled before/after contact sheet around timeline edit points. Run after every important export; inspect warnings and fix the timeline before re-exporting when needed. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "renderId": {
+        "type": "string",
+        "description": "Completed render job ID returned by submit_render_job."
+      },
+      "src": {
+        "type": "string",
+        "description": "Alternative completed export path under /media/uploads/."
+      },
+      "maxCuts": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8,
+        "description": "Maximum edit boundaries to include in the evidence sheet; defaults to 8."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### publish_to_social
+
+Publish a finished video render to social platforms (TikTok, Instagram Reels, YouTube, LinkedIn, Facebook, X, Threads, Pinterest, Bluesky) through Upload-Post. Two steps, always: (1) call WITHOUT confirm — nothing is uploaded; it returns needsConfirm, a requestId, and the file, profile, platforms, missingPlatforms (not connected on the profile, would be skipped), title and privacy. Show that preview to the user. (2) Only after the user explicitly approves it in this conversation, call again with the SAME arguments plus confirm:true and previewId set to that requestId. If the Upload-Post account, the profile, the file or any field changed since the preview, the confirm is refused with preview_mismatch: preview again and ask again. Pinterest needs pinterestBoardId. A confirm returns phase admitted immediately and the upload continues in the background; poll track_social_publish with the requestId. Publishing is public and cannot be undone; re-sending an approved publish resumes it instead of posting twice. source is the downloadUrl from a completed track_export (/media/uploads/...). Requires the Upload-Post key and profile in Settings. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "downloadUrl of a completed video render (/media/uploads/<file>.mp4)."
+      },
+      "platforms": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "tiktok",
+            "instagram",
+            "youtube",
+            "linkedin",
+            "facebook",
+            "x",
+            "threads",
+            "pinterest",
+            "bluesky"
+          ]
+        },
+        "minItems": 1,
+        "description": "Where to publish. TikTok, Instagram Reels and YouTube Shorts expect a vertical 9:16 render."
+      },
+      "title": {
+        "type": "string",
+        "description": "Caption / title used on every platform. YouTube allows at most 100 characters."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional longer text for YouTube, LinkedIn, Facebook and Pinterest."
+      },
+      "youtubePrivacy": {
+        "type": "string",
+        "enum": [
+          "private",
+          "unlisted",
+          "public"
+        ],
+        "description": "Defaults to private."
+      },
+      "tiktokPrivacy": {
+        "type": "string",
+        "enum": [
+          "PUBLIC_TO_EVERYONE",
+          "MUTUAL_FOLLOW_FRIENDS",
+          "FOLLOWER_OF_CREATOR",
+          "SELF_ONLY"
+        ],
+        "description": "Omit to keep the TikTok account default."
+      },
+      "pinterestBoardId": {
+        "type": "string",
+        "description": "Required when platforms includes pinterest: the ID of the Pinterest board to pin the video to. Ask the user for it."
+      },
+      "aiGenerated": {
+        "type": "boolean",
+        "description": "Disclose AI-generated content (TikTok, Instagram, YouTube and X labels). Ask the user when the video uses generated visuals or voice."
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "Omit on the first call (preview). true only after the user approved the preview in chat."
+      },
+      "previewId": {
+        "type": "string",
+        "description": "Required with confirm:true: the requestId returned by the preview the user approved."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "source",
+      "platforms",
+      "title",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### track_social_publish
+
+Check a publish started by publish_to_social. action=status returns the current state; action=wait polls until it settles or timeoutSeconds elapses, then returns the last known state with waitExpired (use one bounded wait, then report). status is uploading while the video is still being sent, then per-platform results: completed (url or postId), failed (error), retryable, or skipped (no account on the profile). status unknown means Upload-Post never confirmed the upload: it is not re-sent. Read-only. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "requestId": {
+        "type": "string",
+        "description": "requestId returned by publish_to_social."
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "status",
+          "wait"
+        ],
+        "description": "Defaults to status."
+      },
+      "timeoutSeconds": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 25,
+        "description": "For action=wait. Defaults to 20."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "requestId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_template
+
+A project template packages motion graphics and a design style for reuse across projects. action: get | list_assets | apply | copy_assets | save. get without templateId lists saved templates with id/name/asset count; get with templateId returns motion graphics, design-style summary, and asset count. list_assets with templateId lists bundled media assets by id/name/kind so you can choose reuse versus regeneration; call it before apply. apply with templateId applies the template to the current project. placement accepts append/replace or exact startFrame, durationInFrames, and targetTrackId. omitAssetIds skips bundled assets and clips that directly reference them. copy_assets with templateId copies only bundled assets into the current project and returns new project-local asset ids without placing the template timeline. save with name packages the current project as a template and replaces a template with the same name. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "get",
+          "list_assets",
+          "apply",
+          "copy_assets",
+          "save"
+        ]
+      },
+      "templateId": {
+        "type": "string",
+        "description": "Target template id for get details/list_assets/apply/copy_assets; call get without arguments to list templates first."
+      },
+      "placement": {
+        "description": "apply: append/replace, or an object specifying start frame, target total duration, and target primary track.",
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "append",
+              "replace"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "startFrame": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "durationInFrames": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "targetTrackId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "omitAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "apply: skip these bundled assets and clips that directly reference them."
+      },
+      "name": {
+        "type": "string",
+        "description": "save: required template name; replaces a template with the same name."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### normalize_loudness
+
+Normalize audio clip(s) to a target integrated loudness (LUFS) by analyzing each clip offline (WebAudio) and applying the computed gain as the clip volume. Defaults to -14 LUFS (streaming loudness standard). To normalize MANY/all clips, call this ONCE with NO itemId — a single call processes every audio clip on the active timeline and returns per-clip results ({itemId, measuredLufs, gain}). Do NOT call it once per clip. Pass itemId ONLY to normalize a single specific clip. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "number",
+        "description": "Target integrated loudness in LUFS (default -14)."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Normalize only this clip (prefix id ok). Omit to normalize all audio clips."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### isolate_voice
+
+AI Voice Isolation: reduce background noise on a video/audio clip so speech is clearer. action=apply (default) creates an immutable full-wet ffmpeg isolation artifact and attaches it as denoisedSrc; strength controls non-destructive dry/wet playback while the master src stays unchanged. action=attach points the clip at an existing audio asset after validating denoisedAssetId and sourceAssetId. action=clear removes isolation and restores original audio. strength 0..100 (default 70). Requires /media/uploads source (upload/finalize first). Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Target video/audio clip id (prefix ok)."
+      },
+      "action": {
+        "type": "string",
+        "enum": [
+          "apply",
+          "attach",
+          "clear"
+        ],
+        "description": "apply = run isolation; attach = use an existing isolated audio asset; clear = detach it."
+      },
+      "sourceAssetId": {
+        "type": "string",
+        "description": "attach: source audio/video asset id or unique prefix. It must match the target clip source."
+      },
+      "denoisedAssetId": {
+        "type": "string",
+        "description": "attach: existing audio asset id or unique prefix containing the isolated full-source audio."
+      },
+      "strength": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "Dry/wet isolation mix 0..100 (default 70). 0 keeps the master dry; 100 uses the isolated artifact."
+      },
+      "force": {
+        "type": "boolean",
+        "description": "apply: create a new immutable artifact even when the same revision/engine/strength artifact already exists."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_skill
+
+A custom creative skill is reusable workflow guidance in bodyMarkdown. It appears beside built-in skills in the Creative Mode picker and is loaded through load_skill after selection. action: list | get | current | activate | create | update | delete. list returns all read-only built-in and custom skills with id/slug/name/summary plus activeSkillId. get with skillId returns details including the full body and a builtin flag. current returns the active creative mode or active:null. activate with skillId switches the project creative mode; pass an empty string to clear it. The next message is instructed to load the selected skill before acting. create with name + body and optional summary/scenarios creates a custom skill and id; a SKILL.md frontmatter name becomes its load_skill slug. update with skillId and changed fields edits a custom skill; built-ins are read-only. delete with skillId removes a custom skill; built-ins cannot be deleted. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "get",
+          "current",
+          "activate",
+          "create",
+          "update",
+          "delete"
+        ]
+      },
+      "skillId": {
+        "type": "string",
+        "description": "Target skill id for get/update/delete/activate; call list first. Pass an empty string to activate to clear Creative Mode."
+      },
+      "name": {
+        "type": "string",
+        "description": "create/update: display name; required and non-empty for create."
+      },
+      "body": {
+        "type": "string",
+        "description": "create/update: Markdown workflow returned by load_skill; required and non-empty for create."
+      },
+      "summary": {
+        "type": "string",
+        "description": "create/update: optional one-line description; create defaults to name."
+      },
+      "scenarios": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "create/update: optional trigger-scenario keywords."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### convert_motion_graphic_to_video
+
+Bake a motion-graphic (or any non-audio clip) on the timeline into a real video asset in the media pool, so it can be reused/exported like footage. Renders the clip full-length via the headless renderer. Transparent MG/text/svg clips bake to a VP9 alpha WebM (transparency preserved, via the sandbox) so they composite over other clips; if the sandbox is unavailable it falls back to opaque h264. Raster clips (video/image/gif) bake to opaque h264. Pass opaque:true to force flatten, replace:true to also swap the source clip in place. Identify the clip by itemId (preferred) or assetId. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Timeline clip id (prefix ok) to convert. Preferred."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Fallback: convert the first placed clip that references this asset/template id."
+      },
+      "replace": {
+        "type": "boolean",
+        "description": "Also replace the source clip in place with the baked video (default false = only add to media pool)."
+      },
+      "opaque": {
+        "type": "boolean",
+        "description": "Force an opaque h264 bake even for MG/text/svg (skip the transparent VP9 webm path)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### register_converted_video
+
+Import a finished MG→video render as a video asset in the media pool — step 2 of the MG→video convert flow. After track_export reports the render complete, call this with the renderId (preferred) to promote the render output into the media pool as a real video asset; the local backend resolves the output itself, no download URL needed. outputUrl is only a fallback when a renderId is unavailable. Returns the video asset id (re-running dedupes to the same asset). Afterwards place the video with edit_item (add a video item referencing the returned videoAssetId). Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "mgAssetId": {
+        "type": "string",
+        "description": "Source motion-graphic asset id (the mgAssetId of the converted clip)."
+      },
+      "renderId": {
+        "type": "string",
+        "description": "The convert render id (preferred; pass it once track_export reports the render complete)."
+      },
+      "outputUrl": {
+        "type": "string",
+        "description": "Raw render output URL — only as a fallback when a renderId is unavailable."
+      },
+      "name": {
+        "type": "string",
+        "description": "Display name for the media-pool asset (defaults to \"<MG name> (video)\")."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "description": "Duration in frames (defaults to the source MG length if omitted)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "mgAssetId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### export_motion_graphic_prores
+
+Export motion-graphic clip(s) as transparent ProRes 4444 .mov file(s) (alpha preserved) — the NLE hand-off format, downloaded in the browser. Use before an XML export so the timeline can reference already-rendered MG media. Identify by itemId(s) (preferred) or assetId(s); batch exports each. Unlike convert_motion_graphic_to_video (opaque h264 into the pool), this keeps alpha and downloads a .mov. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "MG timeline item id (prefix ok). Preferred."
+      },
+      "itemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Batch: several MG item ids/prefixes."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "MG asset id/prefix — exports its first placed timeline instance."
+      },
+      "assetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Batch: several MG asset ids/prefixes."
+      },
+      "filenameMode": {
+        "type": "string",
+        "enum": [
+          "asset",
+          "xml"
+        ],
+        "description": "asset = user-friendly asset-name .mov; xml = mg-<renderKey>.mov for submit_export XML compatibility. Defaults to asset."
+      },
+      "name": {
+        "type": "string",
+        "description": "Optional base filename (single export); \".mov\" is appended."
+      },
+      "preferTimelineInstance": {
+        "type": "boolean",
+        "description": "When assetId is used, export the first timeline instance and its edited properties when present. Defaults to true. Set false to render the media-pool/template defaults."
+      },
+      "timelineId": {
+        "type": "string",
+        "description": "Optional timeline id/prefix used to resolve item or asset instances without switching timelines."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### edit_asset
+
+Update or delete media-pool assets, not timeline clips; use move_item/remove_item for clips. action=update changes name, props, or exact sourceTimecode/captureClock metadata; code assets such as generated motion graphics may receive new code, which must pass sandbox compilation before any change is saved. Clock metadata uses normalized frameCount + rational frameRate + dropFrame. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "update",
+          "delete"
+        ]
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Target asset id or unique prefix."
+      },
+      "name": {
+        "type": "string",
+        "description": "update: new display name."
+      },
+      "code": {
+        "type": "string",
+        "description": "update: new source for a code asset such as motion graphics; sandbox-validated."
+      },
+      "props": {
+        "type": "object",
+        "description": "update: merge into asset props to change defaults."
+      },
+      "favorite": {
+        "type": "boolean",
+        "description": "update: favorite flag."
+      },
+      "sourceTimecode": {
+        "type": "object",
+        "description": "Normalized embedded timecode: {frameCount, frameRate:{numerator,denominator}, dropFrame}.",
+        "properties": {
+          "frameCount": {
+            "type": "number"
+          },
+          "frameRate": {
+            "type": "object",
+            "properties": {
+              "numerator": {
+                "type": "number"
+              },
+              "denominator": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "numerator",
+              "denominator"
+            ]
+          },
+          "dropFrame": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "frameCount",
+          "frameRate",
+          "dropFrame"
+        ]
+      },
+      "captureClock": {
+        "type": "object",
+        "description": "Normalized capture clock with the same exact structure as sourceTimecode.",
+        "properties": {
+          "frameCount": {
+            "type": "number"
+          },
+          "frameRate": {
+            "type": "object",
+            "properties": {
+              "numerator": {
+                "type": "number"
+              },
+              "denominator": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "numerator",
+              "denominator"
+            ]
+          },
+          "dropFrame": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "frameCount",
+          "frameRate",
+          "dropFrame"
+        ]
+      },
+      "clearSourceTimecode": {
+        "type": "boolean",
+        "description": "update: remove embedded source timecode metadata."
+      },
+      "clearCaptureClock": {
+        "type": "boolean",
+        "description": "update: remove capture clock metadata."
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "delete: confirm deletion when clips still reference the asset (confirmImpact)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "assetId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### web_browser
+
+Scrape a single web page via Firecrawl (web_browser → Firecrawl /scrape). formats: markdown (default), html, rawHtml, images, links, branding, summary, screenshot, videos. branding = native brand kit (colors/fonts/logo); summary = native page summary. screenshot is auto-saved to media pool as screenshotAssetId when possible. For many known URLs use web_batch_scrape; site discovery use web_map; multi-page crawl use web_crawl; search use web_search. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Page URL (http/https)."
+      },
+      "formats": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "html",
+            "rawHtml",
+            "images",
+            "links",
+            "branding",
+            "summary",
+            "screenshot",
+            "videos"
+          ]
+        },
+        "description": "Default ['markdown']."
+      },
+      "onlyMainContent": {
+        "type": "boolean",
+        "description": "Strip nav/footer (default true)."
+      },
+      "fullPage": {
+        "type": "boolean",
+        "description": "Full-page screenshot when format includes screenshot."
+      },
+      "waitFor": {
+        "type": "number",
+        "description": "ms wait before extract (0–10000)."
+      },
+      "timeout": {
+        "type": "number",
+        "description": "Timeout ms (max 60000)."
+      },
+      "country": {
+        "type": "string",
+        "description": "Geo country code e.g. 'US'."
+      },
+      "query": {
+        "type": "string",
+        "description": "NL structured-extraction prompt."
+      },
+      "schema": {
+        "description": "JSON schema for structured extraction."
+      },
+      "actions": {
+        "type": "array",
+        "description": "Firecrawl page actions before scrape (click/wait/scroll/…), max 10. For type=executeJavascript, script MUST NOT contain a top-level return statement (Firecrawl rejects it with SyntaxError: Illegal return statement) — write the script as a bare expression or wrap it in an IIFE like (() => { ... })().",
+        "items": {}
+      },
+      "execJs": {
+        "type": "string",
+        "description": "JS to run before extract (max 10000 chars). No top-level return allowed — use a bare expression or an IIFE."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "url",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### web_search
+
+Search the web via Firecrawl /search (official API). Returns titles, URLs, descriptions; by default also scrapes markdown for each hit (scrapeMarkdown=true). Use site: / filetype: operators in query when helpful. Prefer this to inventing URLs. Then web_browser a specific URL for deep scrape/screenshot. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query (supports operators like site:example.com)."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Max results 1–20 (default 5)."
+      },
+      "country": {
+        "type": "string",
+        "description": "ISO country e.g. 'US' (default US on Firecrawl)."
+      },
+      "lang": {
+        "type": "string",
+        "description": "Language code if supported by provider."
+      },
+      "tbs": {
+        "type": "string",
+        "description": "Time filter e.g. qdr:d (day), qdr:w (week), qdr:m (month), qdr:y (year)."
+      },
+      "scrapeMarkdown": {
+        "type": "boolean",
+        "description": "If true (default), include markdown for each result via scrapeOptions."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### web_map
+
+Discover URLs on a website via Firecrawl /map (official API). Fast sitemap+link discovery, does NOT download full page bodies. Use search to rank by path relevance. Then web_browser or web_crawl selected URLs for content. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Base site URL to map."
+      },
+      "search": {
+        "type": "string",
+        "description": "Optional path/keyword to rank results (e.g. blog)."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Max links 1–500 (default 100)."
+      },
+      "includeSubdomains": {
+        "type": "boolean",
+        "description": "Include subdomains (default true)."
+      },
+      "ignoreQueryParameters": {
+        "type": "boolean",
+        "description": "Drop ?query URLs (default true)."
+      },
+      "sitemap": {
+        "type": "string",
+        "enum": [
+          "skip",
+          "include",
+          "only"
+        ],
+        "description": "Sitemap mode: skip | include (default) | only."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "url",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### web_crawl
+
+Crawl multiple pages from a start URL via Firecrawl /crawl (official API). Starts a job and waits (polls) until completed or maxWaitMs. Returns truncated markdown per page. Keep limit small (default 10, max 50). For one page use web_browser; for URL list only use web_map. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Start URL."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Max pages 1–50 (default 10)."
+      },
+      "maxDiscoveryDepth": {
+        "type": "number",
+        "description": "Max discovery depth 0–5 (alias maxDepth)."
+      },
+      "maxDepth": {
+        "type": "number",
+        "description": "Alias of maxDiscoveryDepth."
+      },
+      "includePaths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Pathname regex patterns to include (e.g. blog/.*)."
+      },
+      "excludePaths": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Pathname regex patterns to exclude."
+      },
+      "allowSubdomains": {
+        "type": "boolean",
+        "description": "Follow subdomains (default false)."
+      },
+      "crawlEntireDomain": {
+        "type": "boolean",
+        "description": "Follow sibling/parent internal links, not only children (default false)."
+      },
+      "maxWaitMs": {
+        "type": "number",
+        "description": "Max wait for crawl job ms (default 90000, max 180000)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "url",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### web_batch_scrape
+
+Batch-scrape multiple known URLs via Firecrawl /batch/scrape (official v2 API). Starts a job and waits (polls) until completed or maxWaitMs. Max 15 URLs per call. formats: markdown (default), summary, branding, links, html. Use when you already have a list of URLs (e.g. from web_search or web_map). For one page use web_browser; for discovering URLs from a seed use web_crawl or web_map. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "urls": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "List of page URLs to scrape (1–15)."
+      },
+      "formats": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "html",
+            "rawHtml",
+            "images",
+            "links",
+            "branding",
+            "summary",
+            "screenshot",
+            "videos"
+          ]
+        },
+        "description": "Default ['markdown']. Prefer markdown, summary, branding for agents."
+      },
+      "onlyMainContent": {
+        "type": "boolean",
+        "description": "Strip nav/footer (default true)."
+      },
+      "maxWaitMs": {
+        "type": "number",
+        "description": "Max wait for batch job ms (default 90000, max 180000)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "urls",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### search_content
+
+Search project content across the local library: agent chat messages, caption texts and transcript words (FTS5, Chinese-aware segmentation). Use when the user asks "where did I say X" / "which project has the caption about Y" / referencing earlier edits or words. Returns per-hit kind (chat|caption|transcript), projectId, ref and score, best first. Query is segmented with the same dictionary as the index, so 2-char Chinese words work. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Content to find, e.g. 背景音乐音量 / 字幕样式 / 黄昏的海边"
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Optional project id to scope the search; omit to search every project."
+      },
+      "limit": {
+        "type": "number",
+        "description": "Optional max hits (default 20, max 50)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "query",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### ask_followup_questions
+
+Ask the user up to 12 follow-up questions in an interactive card, then WAIT for the next user message. Each field accepts type "single", "multi", or "text" and variant "default", "visual", "voice", or "scenario". Options accept id/label (or value/display), description, preview/media, audioUrl, aspectRatio, and submitPrompt. Use text fields for free-form answers, visual for image choices, voice for playable voice choices, and scenario for workflow choices. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "fields": {
+        "type": "array",
+        "description": "Fields: { id, label, type, variant?, description?, placeholder?, otherPlaceholder?, options?, required?, allowOther? }.",
+        "items": {
+          "type": "object"
+        }
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Optional text shown above the card."
+      },
+      "title": {
+        "type": "string",
+        "description": "Optional card title."
+      },
+      "submitLabel": {
+        "type": "string",
+        "description": "Optional submit button label."
+      },
+      "messagePrefix": {
+        "type": "string",
+        "description": "Optional prefix prepended to the submitted answer."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "fields",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### delete_project
+
+Soft-delete a project (same as dashboard delete). Hidden from list_projects; restore with restore_project. Requires explicit projectId — never defaults to the current project. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "description": "Full project id from list_projects or editor URL."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "projectId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### restore_project
+
+Restore a soft-deleted project so it reappears in list_projects / dashboard. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string"
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "projectId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### duplicate_project
+
+Full-copy a project (timelines, assets, captions). Chat history is not copied. activate=true (default) navigates the editor to the new copy when openProject is available. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "description": "Source project id; defaults to current project."
+      },
+      "name": {
+        "type": "string",
+        "description": "Copy display name; default \"[Copy] <source>\"."
+      },
+      "activate": {
+        "type": "boolean",
+        "description": "Open the copy in the editor (default true)."
+      },
+      "editorBaseUrl": {
+        "type": "string"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### edit_project
+
+Update project-level settings or speakers. action=update: change name/description via json {"name"?, "description"?}. action=speaker-update: project-wide rename/merge a speaker — {from:"A", to:"New name"} relabels every word of that speaker across all transcribed clips in the open project. speaker-create/speaker-delete are unsupported here (no speaker roster — speakers are per-word diarization labels); use speaker-update to relabel, or manage_transcript fix per clip. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "update",
+          "speaker-create",
+          "speaker-update",
+          "speaker-delete"
+        ]
+      },
+      "id": {
+        "type": "string",
+        "description": "Speaker ID (for speaker ops) — the existing diarization label to target (alias of from / json.id)."
+      },
+      "from": {
+        "type": "string",
+        "description": "speaker-update: existing speaker label to rename (e.g. \"A\")."
+      },
+      "to": {
+        "type": "string",
+        "description": "speaker-update: new speaker name."
+      },
+      "json": {
+        "type": "string",
+        "description": "update: {name?, description?}. speaker-update also accepts {from,to} here."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Defaults to current project (speaker-update needs the open project)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### import_media
+
+Create a formal external import session with one short-lived, single-use upload slot. The slot is bound to session, project, asset, filename, POST method, MIME type, and exact byte size. Upload the declared bytes, then pass the opaque server receipt and echoed assetType to finalize_uploaded_asset. No media-pool asset is published before finalize succeeds. Provide assetId only to replace an existing pool asset; omit it for a new asset. Prefer download_media for public URLs. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "create_session"
+        ],
+        "description": "Must be create_session."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Optional existing media-pool asset id or unique prefix to replace."
+      },
+      "assetType": {
+        "type": "string",
+        "enum": [
+          "audio",
+          "gif",
+          "image",
+          "svg",
+          "video"
+        ],
+        "description": "audio|gif|image|svg|video."
+      },
+      "filename": {
+        "type": "string",
+        "description": "Safe original filename used to scope the upload."
+      },
+      "contentType": {
+        "type": "string",
+        "description": "MIME type, e.g. video/mp4."
+      },
+      "size": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Required exact byte size of the upload."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored; the active project is used."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "assetType",
+      "filename",
+      "contentType",
+      "size",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### finalize_uploaded_asset
+
+Finalize bytes uploaded through an external upload handoff. Pass the opaque receipt plus assetType from the successful upload response; path, hash, size, filename, and authoritative media type are resolved server-side. The receipt is claimed during validation and normalization, then consumed only after the asset commit succeeds. durationInSeconds is schema-required for audio/video/gif; width/height may supply media metadata. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "receipt": {
+        "type": "string",
+        "description": "Opaque one-time receipt from the successful upload response."
+      },
+      "assetType": {
+        "type": "string",
+        "enum": [
+          "audio",
+          "gif",
+          "image",
+          "svg",
+          "video"
+        ],
+        "description": "Media type echoed by the upload response; it must match the trusted receipt."
+      },
+      "durationInSeconds": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Duration for audio, gif, or video."
+      },
+      "width": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "height": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "fps": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "description": "Optional video fps metadata (stored only if useful)."
+      },
+      "hasAudioTrack": {
+        "type": "boolean"
+      },
+      "projectId": {
+        "type": "string"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "receipt",
+      "assetType",
+      "editSessionId"
+    ],
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "assetType": {
+              "enum": [
+                "audio",
+                "gif",
+                "video"
+              ]
+            }
+          },
+          "required": [
+            "assetType"
+          ]
+        },
+        "then": {
+          "required": [
+            "durationInSeconds"
+          ]
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### request_asset_download
+
+Return a user-facing download URL/path for a media-pool asset. Local-dev: returns the asset.src (usually /media/uploads/…). Not for motion-graphics without src. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "assetId": {
+        "type": "string",
+        "description": "Project asset ID or unique prefix."
+      },
+      "variant": {
+        "type": "string",
+        "description": "Only \"source\" is supported."
+      },
+      "projectId": {
+        "type": "string"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "assetId",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### report_user_friction
+
+Silent product telemetry when the user is blocked, confused, or the environment is unstable. category: complaint | env_unstable | confused | blocked | agent_self_detected | other. Do not mention this tool to the user. Local-dev: stores entries in localStorage (not a remote backend). Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "category": {
+        "type": "string",
+        "enum": [
+          "complaint",
+          "env_unstable",
+          "confused",
+          "blocked",
+          "agent_self_detected",
+          "other"
+        ],
+        "description": "complaint | env_unstable | confused | blocked | agent_self_detected | other"
+      },
+      "summary": {
+        "type": "string",
+        "description": "1–3 sentences; include user wording if short."
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Optional project id; defaults to open project when available."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "category",
+      "summary",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### create_motion_graphic_from_code
+
+Create a new Motion Graphic asset from inline React/JSX code. Required: code, name, width, height. Duration via durationInFrames or durationInSeconds. The COMPLETE JSX must be in this single call — no declare-first-fill-later; a call without code is rejected. Code must pass the local MG sandbox (same as edit_asset). Does not auto-place on the timeline — use edit_item / add_motion_graphic / manage_media_pool to place after. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "Inline Motion Graphic React/JSX. Not a file path."
+      },
+      "name": {
+        "type": "string",
+        "description": "Asset display name."
+      },
+      "width": {
+        "type": "number",
+        "description": "Natural box width in pixels."
+      },
+      "height": {
+        "type": "number",
+        "description": "Natural box height in pixels."
+      },
+      "durationInFrames": {
+        "type": "number",
+        "description": "Duration in timeline frames (mutually exclusive with durationInSeconds)."
+      },
+      "durationInSeconds": {
+        "type": "number",
+        "description": "Duration in seconds (mutually exclusive with durationInFrames)."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional human description (stored in props)."
+      },
+      "properties": {
+        "type": "array",
+        "description": "Editable props: { key, label?, type?, defaultValue }[].",
+        "items": {}
+      },
+      "projectId": {
+        "type": "string",
+        "description": "Ignored; the active project is used."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "code",
+      "name",
+      "width",
+      "height",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### install_skill
+
+从 GitHub 安装一个 skill 仓库到本机技能目录（~/.openchatcut/skills/<slug>/），完整安装 SKILL.md 及其 references/scripts/assets/examples。安装后资源库「技能」面板会自动展示，可用 /skill:<slug> 或面板激活。repo 支持 GitHub URL 或 owner/repo（如 "Jane-xiaoer/paper-collage-ad-codex"）。slug 可选，默认取 SKILL.md 的 name 或仓库名。 Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "repo": {
+        "type": "string",
+        "description": "GitHub 仓库：完整 URL（https://github.com/owner/repo）或 owner/repo"
+      },
+      "slug": {
+        "type": "string",
+        "description": "可选：安装目录名（必须 kebab-case），默认取 SKILL.md frontmatter name 或仓库名"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "repo",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### run_skill_script
+
+在本机执行已安装技能目录内的脚本（白名单命令：bash/sh/node/npm/npx/python3/python/uv/uvx/ffmpeg/ffprobe/mkdir/cp/chmod），工作目录锁定在技能目录。用于运行技能自带的确定性脚本（如 render.mjs、check-deps.sh），云沙箱无法访问本机技能文件。超时默认 60s、上限 120s；输出最多 512KB。 Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "skill": {
+        "type": "string",
+        "description": "技能 slug（load_skill 返回的 skill 字段）"
+      },
+      "command": {
+        "type": "string",
+        "description": "命令（首个词必须是白名单内可执行文件），如 bash scripts/check-deps.sh 或 node scripts/render.mjs"
+      },
+      "timeout": {
+        "type": "number",
+        "description": "可选：超时毫秒，默认 60000，上限 120000"
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "skill",
+      "command",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### run_code
+
+Run a shell command in an isolated Linux sandbox (e2b) — use for skill-shipped scripts, ffmpeg/ffprobe media probing/transcoding, or node/python. Optionally write input files first (files[]) and read output files back (outputs[]). The sandbox cannot touch the editor timeline; apply any result with the editor tools. Call this when a loaded skill instructs you to run a script or command. Do not use for flex crop, keep-only-region jobs, or measuring clip edges (use edit_item transform.crop). The user does not need to forbid this tool in the prompt. If sandbox is not in configured capabilities, do not call this tool. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Shell command to run, e.g. \"ffmpeg -version\" or \"node process-media.mjs in.mp4\"."
+      },
+      "files": {
+        "type": "array",
+        "description": "Input files to write into the sandbox before running. Each item gives a target path plus either inline content OR a url to fetch: a local media-pool/asset url like \"/media/uploads/x.mp4\" (served from the app) or a public \"https://…\" url. Use this to bring real media in for ffprobe/ffmpeg. (A public URL can also be probed directly by passing it to ffprobe without files.)",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      "outputs": {
+        "type": "array",
+        "description": "Paths of files to read back after running.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "command",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### probe_media
+
+Probe a media file with the ffprobe bundled in the app (no sandbox or API key needed). Returns measured duration, dimensions, average fps, stream presence/codecs, plus explicit qualityRisks (low resolution, mono, very short, variable/low frame rate). Accepts a media-pool assetId/prefix, local /media/… path, or public https URL. Use before finalize_uploaded_asset to pass hasAudioTrack and measured fps/duration. download_media/push_asset results already include the same measurements as `probe`, so do not re-probe a file you just imported. It fails only when the source cannot be read; finalize may then proceed with ingest defaults. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Media-pool assetId/prefix, a local /media/… path, or a public https:// URL."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "source",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### multicam_sync
+
+Persistent multicam alignment. Prefers normalized source timecode, then capture clock, and falls back to audio correlation per angle. Creates or updates a durable group with its reference/master, source snapshots, offsets, confidence and sync evidence; all placements and metadata commit as one undoable state change. Every selected angle must use the same playback rate; unify rates before retrying a rejected sync. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Timeline item ids for all angles (reference + followers). At least 2."
+      },
+      "referenceItemId": {
+        "type": "string",
+        "description": "Optional reference angle id (must be in itemIds). Defaults to first video clip."
+      },
+      "groupId": {
+        "type": "string",
+        "description": "Existing multicam group id to update. Omit to create or discover one from the selected items."
+      },
+      "masterItemId": {
+        "type": "string",
+        "description": "Optional program/master angle item id. Defaults to referenceItemId."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemIds",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### change_cam
+
+Persistent multicam range switch. Pass groupId + targetAngleId and [fromSeconds,toSeconds); the editor uses the rippleless split/remove planner, restores source coverage when a prior decision removed that angle, and saves a replaceable right-open angle decision. The complete result commits once; failures commit nothing. Legacy itemIds + targetItemId remain accepted for a group created by multicam_sync. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "string",
+        "description": "Persistent multicam group id. Preferred over itemIds."
+      },
+      "targetAngleId": {
+        "type": "string",
+        "description": "Persistent angle id (or its original item id) to show."
+      },
+      "itemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Legacy group lookup: current/original ids of angles previously passed to multicam_sync."
+      },
+      "targetItemId": {
+        "type": "string",
+        "description": "Legacy alias for targetAngleId."
+      },
+      "fromSeconds": {
+        "type": "number",
+        "description": "Switch start, timeline seconds."
+      },
+      "toSeconds": {
+        "type": "number",
+        "description": "Switch end (exclusive), timeline seconds. Default: end of target source."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "fromSeconds",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_link_group
+
+Create or remove persistent timeline edit relationships as one undoable change. action=link couples A/V move, trim and remove; action=sync_lock preserves group timing through direct moves and ripple edits; action=unlink removes the selected memberships. Pass 2+ itemIds for link/sync_lock. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "link",
+          "sync_lock",
+          "unlink"
+        ]
+      },
+      "itemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "anchorItemId": {
+        "type": "string",
+        "description": "Optional anchor; defaults to the first resolved item."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "itemIds",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### undo_last_change
+
+Revert the project to its state before the most recent applied change — use it when the user asks to undo, roll back, or take back the last edit. Proposed like any other edit, so the user still confirms it, and the revert itself stays undoable. It only reaches changes that were already APPLIED: edits still pending in the current proposal are dropped by rejecting that proposal, not with this tool. Call it once per undo step; to undo several steps, ask the user to confirm each. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### redo_last_change
+
+Re-apply the project state that was undone by the most recent undo — use when the user asks to redo or restore the change they just undid. Same proposal path as undo_last_change: user confirms, and the redo itself becomes a normal history step. Only works when a redo target exists (after an undo, before a new edit clears the redo stack). Call once per redo step. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### manage_versions
+
+Named project version history (Version History panel): list checkpoints, save the current project as a named snapshot, restore a snapshot as a whole-project replacement (propose→confirm, same path as undo), or delete a saved version. Versions are milestones across sessions — not the fine-grained undo stack. restore replaces the entire open project. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "save",
+          "restore",
+          "delete"
+        ],
+        "description": "list snapshots; save current doc; restore by versionId; delete a snapshot row."
+      },
+      "name": {
+        "type": "string",
+        "description": "save: display name for the checkpoint (e.g. \"粗剪完成\")."
+      },
+      "versionId": {
+        "type": "string",
+        "description": "restore/delete: version id or unique prefix from list."
+      },
+      "confirm": {
+        "type": "boolean",
+        "description": "restore: first call without confirm returns needsConfirm summary; resend with confirm:true to applyDoc the snapshot."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### apply_layout
+
+Arrange visual clips into a named multi-video layout (split screen / picture-in-picture / grid) in ONE undoable step. You pick a layout and assign a clip to each slot; the tool computes scale/position/crop so each clip FILLS its slot edge-to-edge WITHOUT stretching (mode=cover crops the layer; anchorX/anchorY 0..1 choose which side to keep, default center). mode=fit letterboxes instead of cropping. layout=full resets one clip back to full frame (clears layout crop/scale). Layouts and slots: full(full) · 2up-horizontal(left,right) · 2up-vertical(top,bottom) · 3up-horizontal(left,center,right) · grid-4(top-left,top-right,bottom-left,bottom-right) · pip(main,inset; insetCorner/insetSize/insetMargin tune the small window). Fewer assignments than slots is fine (other slots stay empty). Stacking follows track order (upper timeline row renders on top), so put the pip inset clip on a HIGHER row than main — the result notes when it is not. Clips must overlap in time to be seen together. Works on the canvas layer: with timeline fit=contain, a source whose aspect differs from the canvas keeps its own letterbox inside the slot. After applying, verify with view_timeline_frames. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "layout": {
+        "type": "string",
+        "enum": [
+          "full",
+          "2up-horizontal",
+          "2up-vertical",
+          "3up-horizontal",
+          "grid-4",
+          "pip"
+        ],
+        "description": "Named layout to apply."
+      },
+      "assignments": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "slot": {
+              "type": "string",
+              "description": "Slot name of the chosen layout (e.g. \"left\", \"inset\")."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "Visual timeline item id (video/image/gif/svg) to place in the slot."
+            }
+          },
+          "required": [
+            "slot",
+            "itemId"
+          ]
+        },
+        "description": "One entry per slot to fill. Slots and items must be unique within the call."
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "cover",
+          "fit"
+        ],
+        "description": "cover (default) crops to fill the slot; fit letterboxes."
+      },
+      "anchorX": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "cover only: horizontal keep-side, 0=left 0.5=center(default) 1=right."
+      },
+      "anchorY": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "description": "cover only: vertical keep-side, 0=top 0.5=center(default) 1=bottom."
+      },
+      "insetCorner": {
+        "type": "string",
+        "enum": [
+          "top-left",
+          "top-right",
+          "bottom-left",
+          "bottom-right"
+        ],
+        "description": "pip only: small-window corner (default bottom-right)."
+      },
+      "insetSize": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 0.6,
+        "description": "pip only: small-window size as canvas fraction (default 0.3)."
+      },
+      "insetMargin": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 0.2,
+        "description": "pip only: gap to the canvas edge (default 0.04)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "layout",
+      "assignments",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### remove_silence
+
+Remove dead air — quiet, speech-free stretches — from clips, ripple-closing each gap on its own track (ONE undoable batch). Detection is on-device and relative: a stretch counts as silence only when its level sits well below the clip's own speech level (so music beds and loud ambience are never cut), it lasts at least minSilenceMs, and a padMs breathing room is kept on both sides. Use this to tighten pacing (long pauses, dead space between takes). It complements word-level editing: transcribed clips that already have word edits or gap caps are skipped — use clean_script there, it trims pauses word-precisely. Clips with playbackRate≠1 or an animated zoom are skipped (reported in skipped[]). Ripple is per-track: other tracks do not shift. Call once with NO itemId to sweep every audio/video clip on the active timeline; pass itemId for a single clip. Pass dryRun:true to preview the cut list (seconds) without editing. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "Only this clip (prefix id ok). Omit to process every audio/video clip."
+      },
+      "thresholdDb": {
+        "type": "number",
+        "minimum": -60,
+        "maximum": -6,
+        "description": "Silence gate relative to the clip's speech level in dB (default -26; more negative = more conservative)."
+      },
+      "minSilenceMs": {
+        "type": "number",
+        "minimum": 200,
+        "maximum": 10000,
+        "description": "Only remove pauses at least this long (default 600ms)."
+      },
+      "padMs": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1000,
+        "description": "Breathing room kept on each side of a cut (default 150ms)."
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "true = report the would-be cuts without editing."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### inspect_color
+
+Measure color scopes of a frame BY THE NUMBERS instead of eyeballing screenshots: luma black/white points, % clipped shadows/highlights, per-channel means, warm-cool (R−B) and green-magenta balance overall AND per luma band (shadows/mids/highlights), mean saturation, and a saturation-weighted 12-bin hue histogram (30° bins from red) with dominant-hue labels — e.g. an orange cluster is usually skin, cyan/azure is usually sky. Default mode measures the COMPOSITED timeline at `frame` or `seconds` (grades/filters/effects applied, all layers stacked — to read one clip, pick a frame where it fills the screen). Pass assetId (+ sourceSeconds) to measure a RAW media-pool asset frame before any grading instead. Typical loop: inspect_color → adjust via edit_item filters / color effects / LUT looks → inspect_color again to confirm the numbers moved as intended. Use view_timeline_frames when you also want to SEE the frame. To match another shot in one call, pass referenceFrame/referenceSeconds or referenceAssetId/referenceSourceSeconds. The result includes signed target-minus-reference deltas and dead-zone-filtered named control suggestions. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "frame": {
+        "type": "number",
+        "description": "Timeline frame to measure (composited). Default: middle of the content."
+      },
+      "seconds": {
+        "type": "number",
+        "description": "Timeline time in seconds (alternative to frame)."
+      },
+      "assetId": {
+        "type": "string",
+        "description": "Measure a RAW media-pool asset instead of the timeline (prefix id ok)."
+      },
+      "sourceSeconds": {
+        "type": "number",
+        "description": "Asset mode only: source time to sample (default: asset midpoint)."
+      },
+      "referenceFrame": {
+        "type": "number",
+        "description": "Reference timeline frame to compare against."
+      },
+      "referenceSeconds": {
+        "type": "number",
+        "description": "Reference timeline time in seconds (alternative to referenceFrame)."
+      },
+      "referenceAssetId": {
+        "type": "string",
+        "description": "Compare against a RAW media-pool asset frame (prefix id ok)."
+      },
+      "referenceSourceSeconds": {
+        "type": "number",
+        "description": "Reference asset source time (default: midpoint)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### auto_grade
+
+Technical auto color correction for imported pool media on the timeline (video/image/gif under /media/uploads). action=analyze measures brightness/contrast/saturation and returns recommended filters without writing. action=apply analyzes then writes setFilters on each target as one undo batch. Neutral cleanup only — not creative LUTs/looks (use browse_library + edit_item for those). Prefer inspect_color after apply to verify numbers. itemIds optional; omit to grade every eligible clip on the active timeline. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "analyze",
+          "apply"
+        ],
+        "description": "analyze = preview recommendations only; apply = analyze + commit filters."
+      },
+      "itemIds": {
+        "type": "string",
+        "description": "Comma-separated clip ids/prefixes. Omit to target all eligible video/image/gif clips with /media/uploads sources."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "action",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### detect_beats
+
+Detect musical beats and downbeats in a media asset's audio, on-device (no model, no network): returns bpm, a confidence ratio (trust results at ≥2; <1.2 yields no beats — speech/ambience are gated out), beats and downbeats in SOURCE seconds. Downbeats mark 4/4 bar starts — cut on downbeats for edits that land musically; beats suit faster montage rhythm. Works best on steady-tempo music; analyze tempo-changing tracks in sections via separate clips. Pass assetId (media pool) for raw analysis, or itemId (timeline clip) to ALSO get timelineFrames mapped through the clip's trim and speed — ready for split/move/markers. With itemId you can set markers:"beats"|"downbeats" to drop clip-anchored timeline markers at the detected points in one undoable batch (cyan=beat, purple=downbeat). To place a cut on a beat B (source seconds) manually: timelineFrame = startFrame + round((B×fps − srcInFrame) / playbackRate). Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "assetId": {
+        "type": "string",
+        "description": "Media-pool asset id (prefix ok) — raw source analysis."
+      },
+      "itemId": {
+        "type": "string",
+        "description": "Timeline clip id (prefix ok) — adds timelineFrames mapping and enables markers."
+      },
+      "markers": {
+        "type": "string",
+        "enum": [
+          "none",
+          "beats",
+          "downbeats"
+        ],
+        "description": "itemId only: also create clip-anchored markers at these points (default none)."
+      },
+      "markerLimit": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 500,
+        "description": "Cap created markers (default 120)."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### sync_cuts_to_music
+
+Recompute a cached music cut plan at execution time and split only unlocked video clips at its planned frames. Pass the analysisRef returned by music_edit_plan to reject stale analysis. All splits are one EditorCommands batch and one undo step. This never starts analysis and never edits the BGM clip itself. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "BGM timeline audio/video clip id (unique prefix accepted)."
+      },
+      "timing": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "beat",
+          "downbeat",
+          "section"
+        ],
+        "description": "Cut timing. auto chooses section/downbeat/beat deterministically from density and available analysis."
+      },
+      "density": {
+        "type": "string",
+        "enum": [
+          "sparse",
+          "medium",
+          "dense"
+        ],
+        "description": "How many analyzed timing points to retain."
+      },
+      "fromFrame": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional inclusive timeline-frame range start; defaults to the BGM clip start."
+      },
+      "toFrame": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Optional exclusive timeline-frame range end; defaults to the BGM clip end."
+      },
+      "targetItemIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "description": "Optional video clip ids/prefixes to constrain targets. Defaults to video clips overlapping the range."
+      },
+      "analysisRef": {
+        "type": "string",
+        "description": "Opaque ref from music_edit_plan. Execution rejects missing or stale analysis."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "timing",
+      "density",
+      "analysisRef",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### sync_images_to_music
+
+Recompute a cached music image plan and add one image clip per planned beat interval. Pass the analysisRef returned by music_image_plan to reject stale analysis. All image additions are one EditorCommands batch and one undo step. The target video track must be unlocked and empty in the requested range; this never starts analysis and never edits the BGM clip. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "itemId": {
+        "type": "string",
+        "description": "BGM timeline audio/video clip id (unique prefix accepted)."
+      },
+      "timing": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "beat",
+          "downbeat",
+          "section"
+        ],
+        "description": "Photo-change timing. auto chooses section/downbeat/beat deterministically from density and available analysis."
+      },
+      "density": {
+        "type": "string",
+        "enum": [
+          "sparse",
+          "medium",
+          "dense"
+        ],
+        "description": "How many analyzed timing points to retain."
+      },
+      "fromFrame": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Optional inclusive timeline-frame range start; defaults to the BGM clip start."
+      },
+      "toFrame": {
+        "type": "number",
+        "minimum": 1,
+        "description": "Optional exclusive timeline-frame range end; defaults to the BGM clip end."
+      },
+      "imageAssetIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "description": "Optional image asset ids/prefixes in display order. Defaults to all image assets in media-pool order and cycles when needed."
+      },
+      "track": {
+        "type": "string",
+        "description": "Optional target video track id or alias, default V1. The target range must be empty and unlocked."
+      },
+      "analysisRef": {
+        "type": "string",
+        "description": "Opaque ref from music_image_plan. Execution rejects missing or stale analysis."
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "itemId",
+      "timing",
+      "density",
+      "analysisRef",
+      "editSessionId"
+    ]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+### review_scene_plan
+
+Advisory review of a multi-scene plan for repetition, decorative visuals, static-card overuse, and generic language. Returns a normalized 0–5 risk score, revision advice, and affected scene numbers. The report is optional advice and never blocks or authorizes submit_image/submit_video. Acts on the live project. Every invocation needs a one-shot OpenChatCut confirmation bound to this session/run, tool, and exact argument digest; changed arguments require a new confirmation. Pass editSessionId.
+
+```json
+{
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "scenes": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Ordered scenes to review. type comparison trims whitespace and ignores case; blank responsibility fields count as missing.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Scene form, e.g. video, image, text_card, chart."
+            },
+            "description": {
+              "type": "string",
+              "description": "Concrete visual description."
+            },
+            "shotIntent": {
+              "type": "string",
+              "description": "Why this shot exists."
+            },
+            "informationRole": {
+              "type": "string",
+              "description": "What this scene communicates."
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "editSessionId": {
+        "type": "string",
+        "description": "Session id returned by begin_edit_session. All editor tools run against this draft."
+      },
+      "editorProjectId": {
+        "type": "string",
+        "description": "Must match the project bound to this MCP transport session."
+      }
+    },
+    "required": [
+      "scenes",
+      "editSessionId"
+    ],
+    "additionalProperties": false
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  }
+}
+```
+
+## Export request fields
+
+```typescript
+export type ExportRequest = {
+  state?: unknown;
+  project?: unknown;
+  timelineId?: unknown;
+  operationId?: unknown;
+  format?: 'video' | 'audio';
+  codec?: 'h264' | 'vp8' | 'prores' | 'mp3' | 'wav';
+  name?: string;
+  startFrame?: number;
+  endFrameExclusive?: number;
+  startSeconds?: number;
+  endSeconds?: number;
+  resolution?: ExportResolution;
+  fps?: number;
+  videoBitrate?: number;
+};
+```
+
+## Internal browser HTTP route reference
+
+These are actual middleware mount points, not a promise that every subroute is directly available to external agents. MCP is the supported external automation interface.
+
+- `/api/assemblyai-upload` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/assemblyai-upload.ts)
+- `/api/auto-grade` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/auto-grade.ts)
+- `/api/claude-code` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/claude-code-agent.ts)
+- `/api/codex` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/codex-agent.ts)
+- `/api/copilot` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/copilot-agent.ts)
+- `/e2b/run` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/e2b.ts)
+- `/e2b/transcode-alpha` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/e2b.ts)
+- `/api/export-destinations` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-destination.ts)
+- `/export/job` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-job-routes.ts)
+- `/export` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-job-routes.ts)
+- `/api/export-qa` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-qa.ts)
+- `/render-still` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-render-routes.ts)
+- `/render-clip` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-render-routes.ts)
+- `/export/stage` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/export-stage.ts)
+- `/api/plugins` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/extension-store.ts)
+- `/api/external-agent` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/external-agent.ts)
+- `/api/external-mcp/mcp` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/external-agent.ts)
+- `/api/extract-audio` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/extract-audio.ts)
+- `/api/extract-frames` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/extract-frames.ts)
+- `/api/web-browser` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/firecrawl.ts)
+- `/api/firecrawl/search` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/firecrawl.ts)
+- `/api/firecrawl/map` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/firecrawl.ts)
+- `/api/firecrawl/crawl` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/firecrawl.ts)
+- `/api/firecrawl/batch` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/firecrawl.ts)
+- `/generate/progress` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/generation-jobs.ts)
+- `/api/hf-proxy` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/hf-proxy.ts)
+- `/generate/image` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/image.ts)
+- `/api/isolate-voice` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/isolate-voice.ts)
+- `/llm` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/llm-proxy.ts)
+- `/llm` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/llm-proxy.ts)
+- `/api/waveform` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/filmstrip` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/media-frame` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/media-poster` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/preview-proxy-file` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/preview-proxy` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/media-preview.ts)
+- `/api/mobile-upload` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/mobile-upload.ts)
+- `/generate/music` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/music.ts)
+- `/api/normalize-media` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/normalize-media.ts)
+- `/api/probe-media` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/probe-media.ts)
+- `/api/project-store` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/project-store-plugin.ts)
+- `/` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/request-shape-gate.ts)
+- `/api/runtime-info` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/runtime-info.ts)
+- `/api/detect-scenes` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/scene-detection.ts)
+- `/api/keys` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/settings.ts)
+- `/api/skills` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/skill-exec.ts)
+- `/api/skills` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/skill-files.ts)
+- `/api/skills/install` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/skill-install.ts)
+- `/generate/sound` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/sound.ts)
+- `/api/stock-search` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/stock.ts)
+- `/generate/subtitles` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/subtitles.ts)
+- `/api/system-fonts` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/system-fonts.ts)
+- `/api/transcribe` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/transcription.ts)
+- `/upload/multipart/init` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-multipart.ts)
+- `/upload/multipart/part` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-multipart.ts)
+- `/upload/multipart/status` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-multipart.ts)
+- `/upload/multipart/complete` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-multipart.ts)
+- `/upload/multipart` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-multipart.ts)
+- `/api/upload-post` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-post.ts)
+- `/media/uploads` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/upload/list` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/upload/hydrate` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/upload/presign` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/upload` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/api/import-url` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/upload-routes.ts)
+- `/generate/video` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/video.ts)
+- `/generate/voice` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/voice.ts)
+- `/` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/vos-auth.ts)
+- `/api/xai-oauth` — [native handler](https://github.com/ictrektech/V-ChatCut/blob/main/server/plugins/xai-oauth.ts)
