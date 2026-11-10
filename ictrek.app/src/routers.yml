@@ -10,3 +10,12 @@ routers:
     keep-alive: true
     entry-point: true
     embed: true
+  - id: v-chatcut-api
+    kind: page
+    title: {zh-CN: API 文档, en: API documentation}
+    icon: lucide:book-open
+    order: 221
+    iframe-src: /app/com.ictrek.v-chatcut/api-guide.html
+    keep-alive: true
+    entry-point: true
+    embed: true

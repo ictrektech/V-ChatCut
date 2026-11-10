@@ -600,3 +600,7 @@ OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICE
 模型入口统一使用 `http://v-scheduler-gateway:8080`，以当前 VOS 用户身份读取 `/api/v1/models` 返回的可见模型与 `endpoints`。打开设置中的 V-Scheduler 页面时自动读取模型，可点击「刷新模型」重新读取；显式 endpoint 优先；内置模型的 endpoint 为空时，按网关相同的已声明能力映射筛选，不按模型名称猜测，完全未声明接口和能力（如云端模型 API 的直通模型）按网关兜底仅可用于对话，`kind=embedding` 除外；未声明能力的模型不会出现在图片、视频、配音、转写、音乐列表中。对话使用 `chat_completions`，图片、视频、配音、转写、音乐分别使用对应的生成接口。上游地址和密钥继续只在 V-Scheduler 配置。
 
 升级保留已有模型、音色、默认厂商、工程和用户目录；持久化的 `vrouter` provider ID、`LLM_VROUTER_*` 和 `V_ROUTER_*` 键作为兼容存储格式保留，不再连接旧 V-Router。已保存但不再可见或未声明所需 endpoint 的模型不会被自动清空，应刷新后选择当前可用模型。回滚无需改写配置。
+
+## VOS API 文档
+
+VOS 侧栏的 API 文档说明 MCP 握手、用户隔离、访问 token、厂商设置、导出任务、取消和原生工具字段；[中文参考](docs/api-reference.zh.md)、[English reference](docs/api-reference.en.md)。使用 `npx tsx scripts/generate-api-reference.mts` 重新生成 schema；离线和渐进式会话的最终目录以实时 tools/list 为准。本轮只更新源码，随下次应用发版进入界面。
