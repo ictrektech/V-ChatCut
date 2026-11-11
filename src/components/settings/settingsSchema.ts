@@ -109,6 +109,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'byteplus', label: 'BytePlus · Seedream' },
           { value: 'grok-imagine', label: 'xAI Grok Imagine' },
           { value: 'vrouter', label: 'V-Scheduler · VOS 账户模型' },
+          { value: 'agnes-image', label: 'Agnes Image' },
         ]),
         vendors: [
           { key: 'image/vrouter', vendor: 'vrouter', title: 'V-Scheduler · VOS 账户模型',
@@ -139,6 +140,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               modelText('XAI_IMAGE_MODEL', '生图模型', 'grok-imagine-image-2.0',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
+          { key: 'image/agnes', vendor: 'agnes', title: 'Agnes AI',
+            note: 'Agnes Image 2.5 Flash，文生图与图生图。尺寸档位 1K/2K/3K/4K，支持多种宽高比。',
+            fields: [
+              secret('AGNES_IMAGE_API_KEY', 'API Key'),
+              text('AGNES_IMAGE_BASE_URL', 'Base URL', '默认 https://apihub.agnes-ai.com/v1'),
+              modelText('AGNES_IMAGE_MODEL', '生图模型', 'agnes-image-2.5-flash'),
+            ] },
         ] },
       VOICE_SETTINGS_GROUP,
       { key: 'video', title: '生视频', hint: 'submit_video · 文 / 图生视频，任一厂商即可。',
@@ -149,8 +157,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
           { value: 'hailuo', label: 'MiniMax 海螺' },
           { value: 'byteplus', label: 'BytePlus · Seedance' },
           { value: 'grok-imagine-video', label: 'xAI Grok Imagine' },
+          { value: 'gemini-omni', label: 'Google · Gemini Omni' },
           { value: 'ofox', label: 'OFox · 多模型' },
           { value: 'vrouter', label: 'V-Scheduler · VOS 账户模型' },
+          { value: 'agnes-video', label: 'Agnes Video' },
         ]),
         vendors: [
           falPage('video'),
@@ -174,6 +184,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
               modelText('XAI_VIDEO_MODEL', '视频模型', 'grok-imagine-video-1.5',
                 '测试连接后可直接选择接口返回的模型，也可以手动填写模型 ID。', true),
             ] },
+          { key: 'video/gemini-omni', vendor: 'gemini', title: 'Google · Gemini Omni Flash',
+            note: '使用 GEMINI_API_KEY（与 Nano Banana 生图相同）。文生视频 / 图生视频 / 首尾帧 / 最多 6 张参考图；比例仅 16:9 与 9:16；分辨率 360p / 720p / 1080p / 4k；时长 3–15 秒（首尾帧 3–10 秒，不填默认 10 秒）。默认模型 gemini-omni-1.2-flash。',
+            fields: [
+              secret('GEMINI_API_KEY', 'API Key'),
+              text('GEMINI_BASE_URL', 'Base URL', '默认 https://generativelanguage.googleapis.com'),
+              modelText('GEMINI_OMNI_VIDEO_MODEL', '视频模型', 'gemini-omni-1.2-flash',
+                'Google AI Studio / Gemini API 的 Omni 视频模型 ID。'),
+            ] },
           { key: 'video/ofox', vendor: 'ofox', title: 'OFox · 多模型网关',
             note: '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。',
             fields: [
@@ -185,6 +203,13 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
             fields: [
               modelText('V_ROUTER_VIDEO_MODEL', '视频模型', '从 V-Scheduler 选择',
                 '测试连接后选择声明 videos/generations 的模型。', true),
+            ] },
+          { key: 'video/agnes', vendor: 'agnes', title: 'Agnes AI',
+            note: 'Agnes Video 2.5 Flash，文生视频、首尾帧控制与图片/音频参考。固定 720P，时长 4–12 秒。',
+            fields: [
+              secret('AGNES_VIDEO_API_KEY', 'API Key'),
+              text('AGNES_VIDEO_BASE_URL', 'Base URL', '默认 https://apihub.agnes-ai.com/v1'),
+              modelText('AGNES_VIDEO_MODEL', '视频模型', 'agnes-video-2.5-flash'),
             ] },
         ] },
       { key: 'music', title: '生音乐', hint: 'submit_music · 文字 / 成片生成配乐，任一厂商即可。',
@@ -399,8 +424,7 @@ export function modelValue(status: KeyStatusResponse | null, name: string): stri
   return status?.models?.[name] ?? '';
 }
 
-/** provider page "Configured": All secrets in the page are configured (doubao = double keys);
- * Pages without secret (local disk) to see if any field has been set.*/
+/** provider page "Configured": Every secret field on the page is configured; */
 export function vendorConfigured(
   status: KeyStatusResponse | null,
   page: SettingsVendorPage,

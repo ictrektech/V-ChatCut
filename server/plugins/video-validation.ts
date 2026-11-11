@@ -1,11 +1,11 @@
 import { buildFalCatalogVideoRequest } from './fal-catalog-input.ts';
 export interface MultiPrompt { prompt: string; duration: number | string; index: number }
-export type VideoResolution = '360p' | '480p' | '512p' | '540p' | '720p' | '768p' | '1080p' | '480P' | '768P' | '1080P' | '4k';
+export type VideoResolution = '360p' | '480p' | '512p' | '540p' | '720p' | '768p' | '1080p' | '480P' | '720P' | '768P' | '1080P' | '4k';
 export type KlingVideoReferType = 'feature' | 'base';
 
 export interface VideoRequest {
   operationId?: string;
-  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter' | 'fal';
+  model?: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter' | 'agnes-video' | 'fal' | 'gemini-omni';
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
   prompt?: string;
@@ -37,7 +37,7 @@ export interface VideoRequest {
 }
 
 export interface ValidVideoRequest extends Omit<VideoRequest, 'model' | 'prompt' | 'durationSeconds' | 'ratio' | 'refImagePaths' | 'refVideoPaths' | 'refAudioPaths'> {
-  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter' | 'fal';
+  model: 'seedance2' | 'kling' | 'hailuo' | 'byteplus' | 'grok-imagine-video' | 'ofox' | 'vrouter' | 'agnes-video' | 'fal' | 'gemini-omni';
   /** Explicit curated Fal model ID; omitted uses the saved Fal default. */
   falModel?: string;
   prompt: string;
@@ -199,6 +199,42 @@ function validateGrok(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+/** Google Gemini Omni Flash: T2V / I2V / first+last / up to 6 image refs. Ratios 16:9|9:16;
+ * resolutions 360p|720p|1080p|4k. Duration 3–15 s (3–10 s with first+last frames); unset → API default 10 s. */
+function validateGeminiOmni(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt || input.prompt.length > 4000) {
+    throw new Error('gemini-omni prompt is required and must be at most 4000 characters');
+  }
+  if (input.durationSeconds < 3 || input.durationSeconds > 15) {
+    throw new Error('gemini-omni durationSeconds must be between 3 and 15');
+  }
+  if (input.firstFramePath && input.lastFramePath && input.durationSeconds > 10) {
+    throw new Error('gemini-omni first+last frame interpolation supports durationSeconds 3 to 10');
+  }
+  if (!['16:9', '9:16'].includes(input.ratio)) {
+    throw new Error(`gemini-omni does not support ratio ${input.ratio}; use 16:9 or 9:16`);
+  }
+  if (input.resolution && !['360p', '720p', '1080p', '4k'].includes(input.resolution)) {
+    throw new Error('gemini-omni resolution must be 360p, 720p, 1080p, or 4k');
+  }
+  if (input.lastFramePath && !input.firstFramePath) throw new Error('lastFrame requires firstFrame');
+  if ((input.firstFramePath || input.lastFramePath) && input.refImagePaths.length) {
+    throw new Error('gemini-omni frame anchors (firstFrame/lastFrame) cannot be combined with refImages');
+  }
+  if (input.refImagePaths.length > 6) throw new Error('gemini-omni accepts at most 6 refImages');
+  if (input.refVideoPaths.length || input.refAudioPaths.length) {
+    throw new Error('gemini-omni refVideos/refAudios are not wired in this integration yet; use firstFrame/lastFrame or refImages');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length || input.refVideoMode) {
+    throw new Error('multi-shot and editing options are not supported by gemini-omni');
+  }
+  rejectSeedanceOptions(input);
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) {
+    throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  }
+  return input;
+}
+
 const OFOX_UNSUPPORTED_ARK_KEYS = ['cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority'] as const;
 
 /** OFox multi-model video gateway: the API validates duration, resolution and
@@ -247,6 +283,35 @@ function validateVRouter(input: ValidVideoRequest): ValidVideoRequest {
   return input;
 }
 
+function validateAgnes(input: ValidVideoRequest): ValidVideoRequest {
+  if (!input.prompt) throw new Error('agnes-video prompt is required');
+  if (input.durationSeconds < 4 || input.durationSeconds > 12) {
+    throw new Error('agnes-video durationSeconds must be between 4 and 12');
+  }
+  if (input.ratio && !['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(input.ratio)) {
+    throw new Error(`agnes-video does not support aspect ratio ${input.ratio}`);
+  }
+  if (input.resolution && input.resolution !== '720p' && input.resolution !== '720P') {
+    throw new Error('agnes-video only supports 720p');
+  }
+  if (input.refImagePaths.length > 5) throw new Error('agnes-video supports at most 5 reference images');
+  if (input.refAudioPaths.length > 3) throw new Error('agnes-video supports at most 3 reference audios');
+  if (input.refVideoPaths.length) throw new Error('agnes-video does not support reference videos');
+  if ((input.firstFramePath || input.lastFramePath) && (input.refImagePaths.length || input.refAudioPaths.length)) {
+    throw new Error('agnes-video frame anchors cannot be combined with reference images or audios');
+  }
+  if (input.mode || input.shotType || input.multiPrompts?.length) throw new Error('agnes-video does not support multi-shot');
+  if (input.refVideoMode) throw new Error('refVideoMode is supported by kling only');
+  if (input.promptOptimizer !== undefined || input.fastPretreatment !== undefined) {
+    throw new Error('promptOptimizer/fastPretreatment are supported by hailuo only');
+  }
+  if (input.seed !== undefined && !Number.isSafeInteger(input.seed)) throw new Error('seed must be a safe integer');
+  for (const key of ['generateAudio', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority'] as const) {
+    if (input[key] !== undefined) throw new Error(`${key} is not supported by agnes-video`);
+  }
+  return input;
+}
+
 export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
   if (input.model === 'fal') {
     if (!input.falModel?.trim()) throw new Error('Choose a Fal video model in Settings or specify falModel');
@@ -257,8 +322,8 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
     buildFalCatalogVideoRequest(falVideoCatalogInput(normalized));
     return normalized;
   }
-  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox' && input.model !== 'vrouter') {
-    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, or fal');
+  if (input.model !== 'seedance2' && input.model !== 'kling' && input.model !== 'hailuo' && input.model !== 'byteplus' && input.model !== 'grok-imagine-video' && input.model !== 'ofox' && input.model !== 'vrouter' && input.model !== 'agnes-video' && input.model !== 'gemini-omni') {
+    throw new Error('model must be seedance2, kling, hailuo, byteplus, grok-imagine-video, ofox, vrouter, agnes-video, gemini-omni, or fal');
   }
   if (input.model === 'hailuo' && input.ratio !== undefined) throw new Error('hailuo does not accept ratio; framing follows the first frame when present');
   const normalized = common(input, input.model);
@@ -267,6 +332,8 @@ export function validateVideoRequest(input: VideoRequest): ValidVideoRequest {
   if (normalized.model === 'grok-imagine-video') return validateGrok(normalized);
   if (normalized.model === 'ofox') return validateOfox(normalized);
   if (normalized.model === 'vrouter') return validateVRouter(normalized);
+  if (normalized.model === 'agnes-video') return validateAgnes(normalized);
+  if (normalized.model === 'gemini-omni') return validateGeminiOmni(normalized);
   return validateSeedance(normalized);
 }
 

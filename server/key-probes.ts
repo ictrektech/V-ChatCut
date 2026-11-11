@@ -2,8 +2,8 @@
 // (read-only endpoint or near-zero cost call), verify that the Key + Base URL is available. The key comes from keystore,
 // Or the request body overrides (the temporary value that has not been saved in the panel will only take effect for this detection and will not be saved).
 // Security invariant: The result only contains ok / message / status / latencyMs, and never echoes any key value;
-// The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each vite-plugin-* one by one
-// Real call writing method (beanbao three header / MiniMax base_resp / Gemini x-goog-api-key...).
+// The provider's error copy is flattened and truncated before entering the message. Align the endpoints and authentication headers of each provider call one by one
+// (Doubao audio-generation X-Api-Key / MiniMax base_resp / Gemini x-goog-api-key...).
 import { getKey, KEY_NAMES, type KeyName } from './keystore.ts';
 import { r2Probe } from './r2.ts';
 import { mediaDirProbe, mediaDirPostCheck, mediaDirOkText } from './media-dir.ts';
@@ -21,10 +21,13 @@ import {
 import { webdavProbe, immichProbe, V_SCHEDULER_MEDIA_PROBES, parseVSchedulerModelCatalog, parseVSchedulerVisionCatalog, schedulerCatalogError } from './key-probe-vos.ts';
 export { parseVSchedulerModelCatalog, parseVSchedulerVoices } from './key-probe-vos.ts';
 import { versionedApiBaseUrl } from './plugins/media-provider-config.ts';
+import { resolveDoubaoSpeaker } from './plugins/voice-providers.ts';
 import { xaiOauthAccessToken } from './xai-oauth-session.ts';
 import { vSchedulerHeaders, vSchedulerModelCatalogUrl } from './v-scheduler-client.ts';
 import {
   classifyStatus,
+  doubaoPostCheck,
+  minimaxPostCheck,
   networkMessage,
   parseModelCatalog,
   parseTextModelCatalog,
@@ -34,12 +37,13 @@ import {
 import { PROBE_TIMEOUT_MS, runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 import { fetchWithProxy } from './key-probe-url.ts';
 export { classifyStatus, networkMessage, parseModelCatalog, type ProbeResult } from './key-probe-result.ts';
+export { doubaoPostCheck, minimaxPostCheck } from './key-probe-result.ts';
 export { runDataDirProbe, runProxyProbe } from './key-probe-local.ts';
 export { probeUrlError } from './key-probe-url.ts';
 type Get = (name: KeyName) => string;
 
 export interface ProbeDef {
-  /** Starting test threshold: OR AND group (doubao = App ID + Access Key together) */
+  /** Starting test threshold: OR of AND-groups (every name in one inner list must be present) */
   readonly needs: readonly (readonly KeyName[])[];
   readonly run: (get: Get) => Promise<Response>;
   /** 2xx may also be a provider-level failure (MiniMax base_resp); return error text, null = true success */
@@ -94,20 +98,6 @@ export function sanitize(text: string): string {
   return sanitizeProbeText(text);
 }
 
-/** MiniMax: HTTP 200 may also cause authentication failure, the truth is in base_resp.status_code(0 = success).*/
-export function minimaxPostCheck(bodyText: string): string | null {
-  try {
-    const body = JSON.parse(bodyText) as { base_resp?: { status_code?: number; status_msg?: string } };
-    const code = body.base_resp?.status_code ?? 0;
-    if (code === 0) return null;
-    const msg = body.base_resp?.status_msg ?? '';
-    const hint = code === 1004 ? '（鉴权失败，检查 Key）' : '';
-    return `MiniMax base_resp ${code}${msg ? ` · ${sanitize(msg)}` : ''}${hint}`;
-  } catch {
-    return null; // Non-JSON 2xx are counted as successful
-  }
-}
-
 // The four capability pages of MiniMax share one detection: POST /v1/get_voice (free read-only;
 // The voice_cloning list is usually empty, minimal response).
 const minimaxProbe: ProbeDef = {
@@ -119,7 +109,6 @@ const minimaxProbe: ProbeDef = {
   }),
   postCheck: minimaxPostCheck,
 };
-
 const atlasMusicProbe: ProbeDef = {
   needs: [['ATLASCLOUD_API_KEY']],
   run: async (get) => {
@@ -257,6 +246,13 @@ export const PROBES: Record<string, ProbeDef> = {
   'image/minimax': minimaxProbe,
   'image/byteplus': byteplusProbe,
   'image/xai': xaiMediaProbe,
+  'image/agnes': {
+    needs: [['AGNES_IMAGE_API_KEY']],
+    run: (get) => fetchWithProxy(`${base(get, 'AGNES_IMAGE_BASE_URL', 'https://apihub.agnes-ai.com/v1')}/models`, {
+      signal: t(), headers: bearer(get('AGNES_IMAGE_API_KEY')),
+    }),
+    models: parseModelCatalog,
+  },
   'image/wavespeed': {
     needs: [['WAVESPEED_API_KEY']],
     run: (get) => fetch(`${base(get, 'WAVESPEED_BASE_URL', 'https://api.wavespeed.ai')}/api/v3/balance`, {
@@ -268,22 +264,23 @@ export const PROBES: Record<string, ProbeDef> = {
   'voice/gemini': geminiMediaProbe,
   'voice/mistral': mistralMediaProbe,
   'voice/cartesia': cartesiaProbe,
-  // openpeech does not have free probing endpoints, synthesizing 1 word is the minimum real verification (the cost is negligible).
+  // Doubao 音频生成新版接口：X-Api-Key 单头鉴权；无免费探活端点，合成 1 个字做最小真实校验（成本可忽略）。
   'voice/doubao': {
-    needs: [['DOUBAO_TTS_APP_ID', 'DOUBAO_TTS_ACCESS_KEY']],
-    run: (get) => fetch(`${base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com')}/api/v3/tts/unidirectional`, {
-      method: 'POST', signal: t(),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Api-App-Id': get('DOUBAO_TTS_APP_ID'),
-        'X-Api-Access-Key': get('DOUBAO_TTS_ACCESS_KEY'),
-        'X-Api-Resource-Id': get('DOUBAO_TTS_RESOURCE_ID') || 'seed-tts-2.0',
-      },
-      body: JSON.stringify({
-        user: { uid: 'openchatcut-probe' },
-        req_params: { text: '测', speaker: 'zh_female_vv_uranus_bigtts', audio_params: { format: 'mp3', sample_rate: 24_000 } },
-      }),
-    }),
+    needs: [['DOUBAO_TTS_API_KEY']],
+    run: (get) => {
+      const root = base(get, 'DOUBAO_TTS_BASE_URL', 'https://openspeech.bytedance.com');
+      return fetch(root.endsWith('/api/v3/tts/create') ? root : `${root}/api/v3/tts/create`, {
+        method: 'POST', signal: t(),
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': get('DOUBAO_TTS_API_KEY') },
+        body: JSON.stringify({
+          model: get('DOUBAO_TTS_MODEL') || 'seed-audio-1.0',
+          text_prompt: '测',
+          references: [{ speaker: resolveDoubaoSpeaker(get('DOUBAO_TTS_VOICE_ID')) || 'zh_female_vv_uranus_bigtts' }],
+          audio_config: { format: 'mp3', sample_rate: 24_000 },
+        }),
+      });
+    },
+    postCheck: doubaoPostCheck,
   },
   'voice/minimax': minimaxProbe,
   'voice/inworld': {
@@ -322,6 +319,13 @@ export const PROBES: Record<string, ProbeDef> = {
   'video/hailuo': minimaxProbe,
   'video/byteplus': byteplusProbe,
   'video/xai': xaiMediaProbe,
+  'video/agnes': {
+    needs: [['AGNES_VIDEO_API_KEY']],
+    run: (get) => fetchWithProxy(`${base(get, 'AGNES_VIDEO_BASE_URL', 'https://apihub.agnes-ai.com/v1')}/models`, {
+      signal: t(), headers: bearer(get('AGNES_VIDEO_API_KEY')),
+    }),
+    models: parseModelCatalog,
+  },
   'video/ofox': {
     needs: [['LLM_OFOX_API_KEY']],
     run: (get) => fetch(`${base(get, 'LLM_OFOX_BASE_URL', 'https://api.ofox.ai/v1')}/models`, {

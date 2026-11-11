@@ -2,18 +2,19 @@ export const GENERATE_WORKFLOW = `
 ## AI image generation
 - When Fal.ai is selected or explicitly requested, use model=fal and the requested falModel (or saved Fal image default from capabilities). If neither is set, ask which Fal model to use. Follow the catalog limits instead of native-provider defaults.
 - Use submit_image only after the user explicitly asks to generate an image.
-- Default model gpt-image-2; use nano-banana for reference-heavy work; image-01 (MiniMax) for stills without references (prompt ≤1500 chars, count ≤9, no referenceAssetIds; optional promptOptimizer).
+- Use the image model named in the capabilities prompt. gpt-image-2 only when that vendor is the configured default; nano-banana for reference-heavy work; image-01 (MiniMax) for stills without references (prompt ≤1500 chars, count ≤9, no referenceAssetIds; optional promptOptimizer); agnes-image when Agnes Image is the configured default (1K–4K, up to 8 reference images, no GPT options).
 - Always provide a short descriptive name. Default aspectRatio 16:9, imageSize 1K, quality high, and count 1 (imageSize/quality are gpt-image-2-oriented).
 - If the project is not 16:9, ask for the desired aspect ratio. Never upgrade to 2K/4K unless the user explicitly requests it.
 - Pass project image asset IDs through referenceAssetIds; never fetch reference bytes yourself.
 - Generated images are saved to the media pool. If the user says "media pool/library only" or asks not to change the timeline, set addToTimeline=false; otherwise propose timeline placement.
 
 ## TTS voice generation
-- Use submit_voice only for explicitly requested TTS after the user confirms a configured provider and a concrete provider-specific voiceId. V-Scheduler may omit voiceId when a default voice is saved in Settings; MiniMax timbre mixing may also omit it.
+- Use submit_voice only for explicitly requested TTS after the user confirms a configured provider and a concrete provider-specific voiceId. The voiceId may be omitted for MiniMax timbre mixing, V-Scheduler with a configured default voice, or Doubao with a default speaker ID saved in Settings.
 - Providers: doubao, elevenlabs, minimax, inworld, fishaudio, speechify, openai, gemini, mistral, and cartesia. All are opt-in; use only choices listed as configured in the capabilities prompt, and never mix voice catalogs.
 - Curated choices exist only for Doubao, ElevenLabs, and MiniMax. Bundled samples exist only where references/voices.md lists one. For every other provider, do not invent a preset or sample URL; require a concrete voiceId from the user/provider account.
+- Doubao accepts a curated alias or the exact user-supplied Volcengine speaker ID (for example S_5wulnA7i2); never shorten, translate, or "correct" a supplied ID. It is sent verbatim as references[].speaker. When Settings has a default speaker ID, use it unless the user names another voice.
 - AI SDK-backed fields: OpenAI supports modelId/speed/outputFormat/instructions; Gemini supports modelId/outputFormat/instructions; Mistral supports modelId/outputFormat; Cartesia supports modelId/speed/languageCode/outputFormat. Inworld, Fish Audio, and Speechify accept only voiceId and optional modelId.
-- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao pitch is post-process; emotionScale/performancePrompt are Doubao-only. ElevenLabs retains its dedicated delivery controls.
+- MiniMax supports speed (0.5–2), pitch (-12–12), volume (0–10), and emotion natively. Doubao supports speedRatio, loudnessRatio, and native pitch_rate (-12–12) via seed-audio-1.0. ElevenLabs retains its dedicated delivery controls.
 - submit_voice creates one media-pool audio asset only. Do not claim it was placed on the timeline.
 
 ## Sound-effect generation
@@ -31,7 +32,7 @@ export const GENERATE_WORKFLOW = `
 
 ## Video generation
 - When Fal.ai is selected or explicitly requested, use model=fal and the requested falModel (or saved Fal video default from capabilities). If neither is set, ask which Fal model to use; never silently pick Seedance for Fal. Follow catalog duration/resolution defaults rather than the native-provider defaults below.
-- Use submit_video only after an explicit video-generation request. Default to seedance2 when configured, 5 seconds, 16:9, and 720p; never silently add variants, duration, or quality.
+- Use submit_video only after an explicit video-generation request. Use the video model named in the capabilities prompt. When that default is seedance2: 5 seconds, 16:9, and 720p. When it is agnes-video: 4–12 seconds (default 5), 16:9, and 720p only. Never silently add variants, duration, or quality.
 - Seedance supports 2–15 seconds, resolution 480p/720p(default)/1080p/4k, typed image/video/audio references, optional audio/seed/camera/watermark/last-frame/expiry/priority controls. Kling supports 3–15 seconds, std/pro, images (≤7, or ≤4 with one refVideo), refVideoMode feature|base, customize/intelligence multi-shot; use @ImageN/@Video1 in prompts. Hailuo supports 6 or 10 seconds, 512p (Hailuo-02), 720p→768P, or 1080p (6s only), firstFrame/lastFrame, optional promptOptimizer/fastPretreatment, or S2V-01 subject-reference via firstFrame when that model is selected; no multi-ref multi-shot.
 - V-Scheduler uses the current VOS account's selected model with videos/generations capability. This integration currently sends text-to-video prompt, duration, aspect ratio, and resolution; the selected upstream validates its own supported values.
 - References must be project asset IDs and must stay in refImages/refVideos/refAudios by media type. lastFrame requires firstFrame.

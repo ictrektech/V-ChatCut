@@ -9,6 +9,7 @@ import {
   hailuoRequestBody, isMinimaxSubjectModel, validateMinimaxVideoMode,
 } from './minimax-video.ts';
 import {
+  agnesVideoRetrieveUrl,
   expectedVideoResultCount,
   hailuoApiResolution, klingPrompt, seedanceApiResolution, seedanceRequestBody,
   validateVideoRequest,
@@ -397,4 +398,39 @@ assert.throws(
   /multi-shot and editing options are not supported by ofox/,
 );
 
-console.log('video.check: ok (seedance 480p + kling base/feature + hailuo)');
+const agnesVideo = validateVideoRequest({
+  model: 'agnes-video', prompt: 'a cat walks', durationSeconds: 5, ratio: '9:16', resolution: '720p', seed: 7,
+});
+assert.equal(agnesVideo.model, 'agnes-video');
+assert.equal(agnesVideo.seed, 7);
+assert.equal(
+  agnesVideoRetrieveUrl('https://apihub.agnes-ai.com/v1', 'video_abc', 'agnes-video-2.5-flash'),
+  'https://apihub.agnes-ai.com/agnesapi?video_id=video_abc&model_name=agnes-video-2.5-flash',
+);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', durationSeconds: 3 }), /between 4 and 12/);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', resolution: '1080p' }), /only supports 720p/);
+assert.throws(
+  () => validateVideoRequest({ model: 'agnes-video', prompt: 'x', firstFramePath: '/media/uploads/a.jpg', refImagePaths: ['/media/uploads/b.jpg'] }),
+  /cannot be combined/,
+);
+assert.throws(() => validateVideoRequest({ model: 'agnes-video', prompt: 'x', generateAudio: true }), /not supported by agnes-video/);
+assert.equal(validateVideoRequest({ model: 'agnes-video', prompt: 'x', lastFramePath: '/media/uploads/b.jpg' }).lastFramePath, '/media/uploads/b.jpg');
+
+const omni = validateVideoRequest({
+  model: 'gemini-omni', prompt: 'neon city flythrough', durationSeconds: 8, ratio: '9:16', resolution: '1080p',
+});
+assert.equal(omni.model, 'gemini-omni');
+assert.equal(omni.ratio, '9:16');
+assert.throws(
+  () => validateVideoRequest({ model: 'gemini-omni', prompt: 'x', ratio: '21:9' }),
+  /16:9 or 9:16/,
+);
+assert.throws(
+  () => validateVideoRequest({
+    model: 'gemini-omni', prompt: 'x',
+    firstFramePath: '/media/uploads/a.jpg', refImagePaths: ['/media/uploads/b.jpg'],
+  }),
+  /cannot be combined with refImages/,
+);
+
+console.log('video.check: ok (seedance 480p + kling base/feature + hailuo + gemini-omni)');

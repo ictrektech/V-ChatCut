@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <a href="https://openchatcut.com/zh/pro"><strong>OpenChatCut Pro</strong></a> · 桌面版：装好就能剪
+</p>
+
+<p align="center">
   <a href="#openchatcut-是什么">产品介绍</a> ·
   <a href="#产品导览">产品导览</a> ·
   <a href="#快速开始">快速开始</a> ·
@@ -294,9 +298,9 @@ http://localhost:5199
 
 ### Agent 本地路径访问（高级）
 
-桌面端 Agent 默认可以访问操作系统允许读取的任意本地目录，包括外接素材盘。`browse_local_media` 可浏览文件夹，按文件名、相对路径和媒体类型搜索，并分页返回结果，不会自动导入。Agent 选好素材后，可用 `import_assets` 批量导入最多 100 个路径，也可用 `import_asset` 导入单个路径、`import_folder` 导入整个文件夹。导入复用媒体探测和源文件引用流程，保留原文件，并跳过媒体池及同一批次中的重复内容。TXT、Markdown、DOCX、PDF 等文稿请作为对话附件添加。这些工具仅在桌面应用中可用。
+桌面端 Agent 默认可以访问操作系统允许读取的任意本地目录，包括外接素材盘。`browse_local_media` 可浏览文件夹，按文件名、相对路径和媒体类型搜索，并分页返回结果，不会自动导入。Agent 选好素材后，可用 `import_assets` 批量导入最多 100 个路径，也可用 `import_asset` 导入单个路径、`import_folder` 导入整个文件夹。导入复用媒体探测和源文件引用流程，保留原文件，并跳过媒体池及同一批次中的重复内容。TXT、Markdown、DOCX、PDF 等文稿请作为对话附件添加。桌面端默认启用这些工具；在浏览器中使用时，只有 `AGENT_IMPORT_ROOTS` 中列出的目录可用，且浏览器需与运行 OpenChatCut 的机器相同（本机访问）。
 
-需要限制目录范围时，可在 `.env.local` 中填写英文逗号分隔的绝对路径，例如 `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects`；留空表示默认放行。手动设置的范围同时适用于浏览和导入。源码运行会读取仓库根目录的文件；桌面安装包会从 Electron 用户数据目录读取：macOS 为 `~/Library/Application Support/OpenChatCut/`，Windows 为 `%APPDATA%\OpenChatCut\`，Linux 为 `$XDG_CONFIG_HOME/OpenChatCut/`（通常是 `~/.config/OpenChatCut/`）。修改后请重启应用。
+需要限制目录范围时，可在 `.env.local` 中填写英文逗号分隔的绝对路径，例如 `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects`；留空表示桌面端默认放行；浏览器端必须设置该白名单，留空时会拒绝这些工具。手动设置的范围同时适用于浏览和导入。源码运行会读取仓库根目录的文件；桌面安装包会从 Electron 用户数据目录读取：macOS 为 `~/Library/Application Support/OpenChatCut/`，Windows 为 `%APPDATA%\OpenChatCut\`，Linux 为 `$XDG_CONFIG_HOME/OpenChatCut/`（通常是 `~/.config/OpenChatCut/`）。修改后请重启应用。
 
 
 本地 H.264 导出会在 macOS 上优先使用 VideoToolbox，在兼容的 Windows 设备上优先使用 NVENC，失败时自动回退软件编码。可用 `OPENCHATCUT_RENDER_CONCURRENCY` 和 `OPENCHATCUT_MAX_ACTIVE_EXPORTS` 调整渲染并发及重型导出上限，用 `OPENCHATCUT_DISABLE_HARDWARE_ENCODING` 关闭硬件编码，或用 `OPENCHATCUT_H264_ENCODER` 覆盖 FFmpeg 侧的编码器选择；详见 [`.env.example`](.env.example)。
@@ -310,6 +314,8 @@ npm run desktop:dev
 桌面端使用 Electron 壳层和同一套内嵌服务，Web 开发版与桌面版共享工程、Agent、生成和导出逻辑。
 
 ### VOS 集成
+
+此 VOS 版本同步 OpenChatCut 0.2.17 及上游 main 的后续修复。设置中可为图片和视频选择 Agnes，为视频选择 Gemini Omni；豆包配音可填厂商音色 ID，也可使用已保存的默认音色。原有 V-Scheduler 选项仍可使用。生成参数上限和 MCP 工具字段见应用内 API 文档。
 
 VOS 应用定义位于 `ictrek.app/`，容器构建文件位于 `vos_docker/`。前端只按 AMD64 和 ARM64 构建两种镜像；后端提供 `amd-with-cuda`、`amd-without-cuda`、`arm-with-cuda`、`arm-without-cuda`、`l4t` 和 `thor-spark` 六个互斥 profile，安装时必须选择一个。VOS 根据宿主机 caps 中的架构、CUDA 和 `device-type` 判断可用 profile。CUDA profile 会优先探测 NVENC，失败时自动回退到 libx264。智能分析和抽帧也只有在实际设备探测成功后才启用硬解，CPU profile 可正常使用声明了 VA-API 的系统 FFmpeg。在对应构建机上运行 `vos_docker/build_image.sh --sheet <飞书表名>`，全部镜像登记完成后运行 `ictrek.app/scripts/update_version.sh patch` 触发 VOS pull 包发布流程。
 
@@ -465,7 +471,7 @@ OPENCHATCUT_EDITOR_URL=https://your-editor.example.com
 |---|---|
 | 前端 | React 19、TypeScript 6、Vite 8 |
 | 编辑核心 | 不可变时间线状态、命令层、提案式应用 |
-| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox、Requesty、Cheaper Inference 与兼容接口）、Agent Skills、MCP SDK |
+| Agent | Vercel AI SDK 7（Anthropic、OpenAI、Gemini、Kimi、Qwen、GLM、DeepSeek、MiniMax、小米 MiMo、Mistral、xAI Grok（API Key 或 SuperGrok/X Premium+ 订阅登录）、OpenRouter、OrcaRouter、OFox、Requesty、Cheaper Inference、Runcrate 与兼容接口）、Agent Skills、MCP SDK |
 | 预览与视觉 | Remotion Player、WebGL / GLSL |
 | 服务端 | Vite / Electron 双宿主插件、服务端密钥仓 |
 | 持久化 | `~/.openchatcut` 下的本机共享工程库、IndexedDB 缓存、可配置本地素材目录、可选 Cloudflare R2 |
@@ -585,6 +591,21 @@ OpenChatCut 采用 [GNU Affero General Public License v3.0 或更高版本](LICE
 第三方组件与资产仍分别受其自身许可证约束。
 
 ---
+
+## 内置 Agent 的网页检索
+
+`web_search` 和基础 `web_browser` 阅读默认使用 Firecrawl，需要 `FIRECRAWL_API_KEY`。
+如需改用无需账号和 API Key 的
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)，
+在 `.env.local` 中设置 `WEB_SEARCH_PROVIDER=parallel` 并重启。Parallel 搜索返回来源 URL、标题和相关摘录；
+网页阅读返回 Markdown 摘录，不提供完整 HTML 或截图。查询和目标 URL 会发送给选定的服务商。
+匿名服务有配额限制，服务商报错时不会自动切换到其他服务商。
+
+`WEB_SEARCH_PROVIDER` 留空或设为 `firecrawl` 时使用 Firecrawl，设为 `disabled` 会关闭基础搜索与网页阅读。
+工具调用可以显式选择 `provider: "firecrawl"`；只有启用 Parallel 后才能选择 `"parallel"`。
+搜索地区/语言/时间过滤、截图、浏览器动作、结构化提取、完整页面格式、站点映射、爬取和批量抓取
+始终需要 Firecrawl Key。相关搜索与网页阅读共用不透明的会话 ID；清空聊天后生成新 ID，
+不会使用工程 ID 或聊天文本作为会话 ID。
 
 ## 贡献
 

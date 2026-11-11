@@ -1,4 +1,4 @@
-ARG NODE_BASE_IMAGE=swr.cn-southwest-2.myhuaweicloud.com/ictrek/node:amd_24-bookworm-slim
+ARG NODE_BASE_IMAGE=swr.cn-southwest-2.myhuaweicloud.com/ictrek/node:amd_24.22.1-bookworm-slim
 
 FROM ${NODE_BASE_IMAGE} AS build
 WORKDIR /app

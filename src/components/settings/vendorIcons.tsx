@@ -41,13 +41,13 @@ import ictrekIcon from '../../../assets/vendor-icons/ictrek.png';
 import vSchedulerIcon from '../../../assets/vendor-icons/v-scheduler.png';
 
 export type VendorId =
-  | 'llm' | 'vrouter' | 'ictrek' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference'
+  | 'llm' | 'vrouter' | 'ictrek' | 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'qwen' | 'glm' | 'deepseek' | 'mistral' | 'openrouter' | 'orcarouter' | 'requesty' | 'cheaperinference' | 'runcrate'
   | 'ollama' | 'lmstudio' | 'xiaomi' | 'minimax' | 'hailuo' | 'elevenlabs' | 'doubao'
   | 'seedance' | 'kling' | 'mureka' | 'sonilo' | 'pexels' | 'pixabay' | 'unsplash' | 'freesound'
   | 'assemblyai' | 'deepgram' | 'groq' | 'cartesia' | 'e2b' | 'firecrawl' | 'r2' | 'localdisk' | 'localasr'
   | 'webdav' | 'immich'
   | 'stepfun' | 'byteplus' | 'inworld' | 'fishaudio' | 'speechify' | 'wavespeed'
-  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'copilot' | 'ofox' | 'fal' | 'uploadpost';
+  | 'vision' | 'proxy' | 'atlas' | 'xai' | 'xai-oauth' | 'copilot' | 'ofox' | 'fal' | 'uploadpost' | 'agnes';
 
 interface SvgIcon {
   readonly svg: string;
@@ -121,6 +121,8 @@ const MONOGRAMS: Partial<Record<VendorId, { bg: string; mono: string; fg?: strin
   requesty: { bg: '#34363c', mono: 'RQ', fg: '#f7f7f8' }, // Requesty gateway, no official SVG vendored yet
   uploadpost: { bg: '#4F46E5', mono: 'UP', fg: '#f7f7f8' }, // Upload-Post social publishing, no official SVG vendored yet
   cheaperinference: { bg: '#0B1F17', mono: 'CI', fg: '#34D399' }, // Cheaper Inference gateway, no official SVG vendored yet
+  runcrate: { bg: '#111111', mono: 'RC', fg: '#f7f7f8' }, // Runcrate, no official SVG vendored yet
+  agnes: { bg: '#6366F1', mono: 'Ag', fg: '#ffffff' },
 };
 
 interface VendorIconProps {

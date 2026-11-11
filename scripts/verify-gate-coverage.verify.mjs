@@ -96,6 +96,8 @@ assert.equal(renderStep['continue-on-error'], undefined);
 const dataModules = new Set([
   'src/i18n/dict/ru/index.ts', // Translation dictionary data, no application logic.
   'src/i18n/dict/en/settings.ts', // Translation dictionary data, no application logic.
+  'src/i18n/dict/ko/settings.ts', // Translation dictionary data, no application logic.
+  'src/i18n/dict/th/settings.ts', // Translation dictionary data, no application logic.
 ]);
 const sourceFiles = [...new Set(execFileSync('git', [
   'ls-files', '--cached', '--others', '--exclude-standard', '-z',

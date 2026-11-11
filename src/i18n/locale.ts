@@ -5,15 +5,15 @@
 //  — As long as the component that renders its output calls useT(), it will be recalculated when switching languages.
 // LLM interface (systemPrompt/tool ​​description/skill content) and persistent dynamic history tags do not enter i18n.
 // Default language: the saved choice wins; otherwise the VOS platform language when embedded,
-// otherwise the system language (zh/ru), and English for everything else.
+// otherwise the system language (zh/it/ru/ko/th), and English for everything else.
 import { useSyncExternalStore } from 'react';
 import { ensureLocaleDict, localeDictReady, localeDicts } from './dictRegistry';
 
 export { ensureLocaleDict } from './dictRegistry';
 
-export type Locale = 'zh' | 'en' | 'it' | 'ru';
+export type Locale = 'zh' | 'en' | 'it' | 'ru' | 'ko' | 'th';
 
-export const ALL_LOCALES: readonly Locale[] = ['zh', 'en', 'it', 'ru'];
+export const ALL_LOCALES: readonly Locale[] = ['zh', 'en', 'it', 'ru', 'ko', 'th'];
 
 const STORAGE_KEY = 'cc.locale';
 const DOCUMENT_LANG: Record<Locale, string> = {
@@ -21,10 +21,12 @@ const DOCUMENT_LANG: Record<Locale, string> = {
   en: 'en',
   it: 'it',
   ru: 'ru',
+  ko: 'ko',
+  th: 'th',
 };
 
 function isLocale(value: unknown): value is Locale {
-  return value === 'zh' || value === 'en' || value === 'it' || value === 'ru';
+  return value === 'zh' || value === 'en' || value === 'it' || value === 'ru' || value === 'ko' || value === 'th';
 }
 
 function readStored(): Locale | null {
@@ -43,6 +45,8 @@ function systemLocale(): Locale {
     if (tag.startsWith('zh')) return 'zh';
     if (tag.startsWith('it')) return 'it';
     if (tag.startsWith('ru')) return 'ru';
+    if (tag.startsWith('ko')) return 'ko';
+    if (tag.startsWith('th')) return 'th';
     return 'en';
   } catch {
     return 'en';
@@ -77,6 +81,8 @@ function platformLocale(value: unknown): Locale | null {
   if (tag.startsWith('zh')) return 'zh';
   if (tag.startsWith('it')) return 'it';
   if (tag.startsWith('ru')) return 'ru';
+  if (tag.startsWith('ko')) return 'ko';
+  if (tag.startsWith('th')) return 'th';
   return 'en';
 }
 
@@ -142,10 +148,12 @@ export function subscribeLocale(onChange: () => void): () => void {
   return () => { subscribers.delete(onChange); };
 }
 
-export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Italian' | 'Russian' {
+export function localeLanguageName(locale: Locale): 'Chinese' | 'English' | 'Italian' | 'Russian' | 'Korean' | 'Thai' {
   if (locale === 'zh') return 'Chinese';
   if (locale === 'it') return 'Italian';
   if (locale === 'ru') return 'Russian';
+  if (locale === 'ko') return 'Korean';
+  if (locale === 'th') return 'Thai';
   return 'English';
 }
 

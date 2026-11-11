@@ -139,8 +139,8 @@ docker buildx version >/dev/null 2>&1 || die "docker buildx is required"
 [[ -f "$FEISHU_HELPER" ]] || die "missing Feishu helper: $FEISHU_HELPER"
 
 DATE="$(date +%Y%m%d)"
-NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-bookworm-slim}"
-FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24-alpine}"
+NODE_BASE_IMAGE="${V_CHATCUT_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24.22.1-bookworm-slim}"
+FRONTEND_NODE_BASE_IMAGE="${V_CHATCUT_FRONTEND_NODE_BASE_IMAGE:-${REGISTRY}/node:${HOST_ARCH}_24.22.1-alpine}"
 NGINX_BASE_IMAGE="${V_CHATCUT_NGINX_BASE_IMAGE:-${REGISTRY}/nginx:${HOST_ARCH}_1.29-alpine}"
 
 if contains frontend "${COMPONENTS[@]}"; then

@@ -20,10 +20,13 @@ import {
   providerMediaUrl,
   ServerReferencePreflightError,
 } from './video-media.ts';
+import { generateGeminiOmniVideo, geminiOmniResultFetch } from './gemini-omni-video-provider.ts';
 import { generateGrokVideo } from './grok-video-provider.ts';
 import { hailuoRequestBody } from './minimax-video.ts';
 import { generateOfoxVideo } from './ofox-video-provider.ts';
 import { generateVRouterVideo } from './vrouter-video-provider.ts';
+import { generateAgnesVideo } from './agnes-video-provider.ts';
+export { agnesVideoRetrieveUrl } from './agnes-video-provider.ts';
 import { saveVideoResults } from './video-result-save.ts';
 import {
   seedanceApiResolution, validateVideoRequest, validateSavedVideoRequest, videoSeconds,
@@ -57,6 +60,12 @@ interface VideoOptions {
   ofoxApiKey: string;
   ofoxVideoModel: string;
   vrouterVideoModel: string;
+  agnesBaseUrl: string;
+  agnesApiKey: string;
+  agnesVideoModel: string;
+  geminiBaseUrl: string;
+  geminiApiKey: string;
+  geminiOmniVideoModel: string;
 }
 
 async function readJson(req: IncomingMessage): Promise<VideoRequest> {
@@ -80,8 +89,11 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 async function providerError(response: Response): Promise<string> {
   const text = await response.text();
   try {
-    const data = JSON.parse(text) as { message?: string; error?: { message?: string }; code?: number };
-    return data.error?.message ?? data.message ?? `video provider failed (${data.code ?? response.status})`;
+    const data = JSON.parse(text) as { message?: string; detail?: unknown; error?: { message?: string }; code?: number };
+    const detail = data.detail == null ? undefined
+      : typeof data.detail === 'string' ? data.detail
+        : JSON.stringify(data.detail).slice(0, 300);
+    return data.error?.message ?? data.message ?? detail ?? `video provider failed (${data.code ?? response.status})`;
   } catch {
     return text.slice(0, 300) || `video provider failed (${response.status})`;
   }
@@ -356,20 +368,28 @@ async function runVideoOperation(
         expectedResultCount,
       );
     } else {
-      const url = input.model === 'grok-imagine-video'
-        ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
-        : input.model === 'vrouter'
-          ? await generateVRouterVideo(input, options, registerProviderTask, providerTaskId)
-        : input.model === 'ofox'
-          ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
-          : input.model === 'kling'
-            ? await generateKling(input, options, registerProviderTask, providerTaskId)
-            : await generateHailuo(input, options, registerProviderTask, providerTaskId);
+      const url = input.model === 'vrouter'
+        ? await generateVRouterVideo(input, options, registerProviderTask, providerTaskId)
+        : input.model === 'gemini-omni'
+          ? await generateGeminiOmniVideo(input, options, registerProviderTask, providerTaskId)
+          : input.model === 'grok-imagine-video'
+            ? await generateGrokVideo(input, options, registerProviderTask, providerTaskId)
+            : input.model === 'ofox'
+              ? await generateOfoxVideo(input, options, registerProviderTask, providerTaskId)
+              : input.model === 'agnes-video'
+                ? await generateAgnesVideo(input, options, registerProviderTask, providerTaskId)
+                : input.model === 'kling'
+                  ? await generateKling(input, options, registerProviderTask, providerTaskId)
+                  : await generateHailuo(input, options, registerProviderTask, providerTaskId);
       urls = requireGenerationResultUrls([url], expectedResultCount);
     }
   }
   urls = requireGenerationResultUrls(urls, expectedResultCount);
-  const resultFetch = input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'vrouter' ? fetchWithProxy : undefined;
+  const resultFetch = input.model === 'gemini-omni'
+    ? geminiOmniResultFetch(options)
+    : input.model === 'grok-imagine-video' || input.model === 'ofox' || input.model === 'agnes-video' || input.model === 'vrouter'
+      ? fetchWithProxy
+      : undefined;
   const download = () => saveVideoResults(
     operationId,
     name,
@@ -381,7 +401,7 @@ async function runVideoOperation(
   return download();
 }
 export function videoGenerationPlugin(options: VideoOptions): Plugin {
-  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'vrouter', 'fal'] as const) {
+  for (const provider of ['seedance2', 'kling', 'hailuo', 'byteplus', 'grok-imagine-video', 'ofox', 'agnes-video', 'vrouter', 'fal', 'gemini-omni'] as const) {
     registerGenerationJobResumer('submit_video', provider, async (
       snapshot: GenerationJobSnapshot,
       _update,

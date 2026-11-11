@@ -39,7 +39,17 @@ assert.ok(!falRouted.includes('Seedance(model=seedance2)'), 'Fal does not impers
 assert.ok(falRouted.includes('No Fal model selected'), 'unset Fal default asks for a model');
 applyLiveModels({ FAL_IMAGE_MODEL: 'nano-banana-2' });
 const falDefault = capabilitiesPrompt({ ...ALL_OFF, image: true });
-assert.ok(falDefault.includes('Saved Fal default: nano-banana-2'), 'selected Fal model reaches the assistant');
+assert.ok(falDefault.includes('Saved Fal model: nano-banana-2'), 'selected Fal model reaches the assistant');
+applyLiveKeyStatus({ FAL_KEY: { configured: true }, AGNES_IMAGE_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_IMAGE_VENDOR: 'agnes-image', FAL_IMAGE_MODEL: 'nano-banana-2' });
+const agnesNotFal = capabilitiesPrompt({ ...ALL_OFF, image: true });
+assert.ok(agnesNotFal.includes('user default: Agnes Image(model=agnes-image)'), 'Agnes stays the image default beside a Fal key');
+assert.ok(agnesNotFal.includes('Fal image models (only when calling model=fal'),
+  'the Fal catalog stays reachable beside another default, scoped to model=fal');
+applyLiveKeyStatus({ FAL_KEY: { configured: true }, AGNES_IMAGE_API_KEY: { configured: true }, IMAGE_API_KEY: { configured: true } });
+applyLiveModels({});
+assert.ok(capabilitiesPrompt({ ...ALL_OFF, image: true }).includes('Fal image models'),
+  'several image vendors and no saved default still list the Fal models');
 applyLiveModels({});
 
 // one minimax key lights all its vendor rows
@@ -52,10 +62,19 @@ applyLiveKeyStatus({ ATLASCLOUD_API_KEY: { configured: true } });
 const atlas = capabilitiesPrompt({ ...ALL_OFF, music: true });
 assert.ok(atlas.includes('Atlas Cloud(provider=atlas)'), 'Atlas key lights the Atlas music route');
 
-// AND-group: doubao needs both keys
-applyLiveKeyStatus({ DOUBAO_TTS_APP_ID: { configured: true } });
+// Doubao needs its API key: unconfigured status hides the vendor
+applyLiveKeyStatus({});
 const half = capabilitiesPrompt({ ...ALL_OFF, voice: true });
-assert.ok(!half.includes('Doubao(provider=doubao)'), 'AND-group (doubao needs both keys) not satisfied by one');
+assert.ok(!half.includes('Doubao(provider=doubao)'), 'doubao without API key stays hidden');
+
+// saved Doubao default speaker reaches the agent so it can be passed verbatim
+applyLiveKeyStatus({ DOUBAO_TTS_API_KEY: { configured: true }, DOUBAO_TTS_VOICE_ID: { configured: true } });
+applyLiveModels({ DOUBAO_TTS_VOICE_ID: 'S_5wulnA7i2' });
+const doubaoDefault = capabilitiesPrompt({ ...ALL_OFF, voice: true });
+assert.ok(doubaoDefault.includes('Doubao(provider=doubao)'), 'configured Doubao is selectable');
+assert.ok(doubaoDefault.includes('Doubao default speaker ID: S_5wulnA7i2'), 'saved speaker reaches the agent');
+applyLiveKeyStatus({});
+applyLiveModels({});
 
 // several vendors + NO user default → agent must ask before first use
 applyLiveKeyStatus({ KLING_API_KEY: { configured: true }, SEEDANCE_API_KEY: { configured: true } });
@@ -104,4 +123,23 @@ assert.ok(ofox.includes('Image generation(submit_image · available: gpt-image(m
 applyLiveKeyStatus({});
 assert.ok(!capabilitiesPrompt({ ...ALL_OFF, video: true }).includes('OFox(model=ofox)'), 'unconfigured OFox stays hidden');
 
+applyLiveKeyStatus({ AGNES_IMAGE_API_KEY: { configured: true }, AGNES_VIDEO_API_KEY: { configured: true } });
+applyLiveModels({ PREFERRED_IMAGE_VENDOR: 'agnes-image', PREFERRED_VIDEO_VENDOR: 'agnes-video' });
+const agnes = capabilitiesPrompt({ ...ALL_OFF, image: true, video: true });
+assert.ok(agnes.includes('user default: Agnes Image(model=agnes-image) — use it without asking again'));
+assert.ok(agnes.includes('user default: Agnes Video(model=agnes-video) — use it without asking again'));
+applyLiveKeyStatus({});
+applyLiveModels({});
+
 console.log('capabilities.verify: ok');
+
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'disabled' });
+assert.match(capabilitiesPrompt(ALL_OFF), /page reading are disabled by the server/);
+applyLiveModels({});
+assert.match(capabilitiesPrompt(ALL_OFF), /use Firecrawl and require FIRECRAWL_API_KEY\. Anonymous Parallel Search MCP is used only when the user sets WEB_SEARCH_PROVIDER=parallel/,
+  'Parallel stays opt-in when the setting is empty');
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'firecrawl' });
+assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use Firecrawl and require FIRECRAWL_API_KEY/);
+applyLiveModels({ WEB_SEARCH_PROVIDER: 'parallel' });
+assert.match(capabilitiesPrompt(ALL_OFF), /explicitly use anonymous Parallel/);
+applyLiveModels({});

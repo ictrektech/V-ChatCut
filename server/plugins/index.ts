@@ -52,6 +52,7 @@ import { claudeCodeAgentPlugin } from "./claude-code-agent.ts";
 import { xaiOauthPlugin } from "./xai-oauth.ts";
 import { llmProxyPlugin } from "./llm-proxy.ts";
 import { agentRunsPlugin } from "../agent-runs/routes.ts";
+import { localMediaPlugin } from "./local-media.ts";
 import { resourcePreviewPlugin } from "./resource-preview.ts";
 import { mediaSourceImportPlugin } from './media-source-import.ts';
 import { getKey } from "../keystore.ts";
@@ -75,6 +76,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
     llmProxyPlugin(),
     xaiOauthPlugin(),
     agentRunsPlugin(),
+    localMediaPlugin(),
     skillFilesPlugin(),
     skillInstallPlugin(),
     skillExecPlugin(),
@@ -168,6 +170,15 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get xaiImageModel() {
         return getKey("XAI_IMAGE_MODEL") || "grok-imagine-image-2.0";
       },
+      get agnesBaseUrl() {
+        return getKey("AGNES_IMAGE_BASE_URL") || "https://apihub.agnes-ai.com/v1";
+      },
+      get agnesApiKey() {
+        return getKey("AGNES_IMAGE_API_KEY");
+      },
+      get agnesImageModel() {
+        return getKey("AGNES_IMAGE_MODEL") || "agnes-image-2.5-flash";
+      },
     }),
     voiceGenerationPlugin({
       get elevenBaseUrl() {
@@ -184,14 +195,14 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
           getKey("DOUBAO_TTS_BASE_URL") || "https://openspeech.bytedance.com"
         );
       },
-      get doubaoAppId() {
-        return getKey("DOUBAO_TTS_APP_ID");
+      get doubaoApiKey() {
+        return getKey("DOUBAO_TTS_API_KEY");
       },
-      get doubaoAccessKey() {
-        return getKey("DOUBAO_TTS_ACCESS_KEY");
+      get doubaoModel() {
+        return getKey("DOUBAO_TTS_MODEL") || "seed-audio-1.0";
       },
-      get doubaoResourceId() {
-        return getKey("DOUBAO_TTS_RESOURCE_ID") || "seed-tts-2.0";
+      get doubaoVoiceId() {
+        return getKey("DOUBAO_TTS_VOICE_ID");
       },
       get minimaxBaseUrl() {
         return getKey("MINIMAX_BASE_URL") || "https://api.minimaxi.com";
@@ -344,6 +355,27 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       get vrouterVideoModel() {
         return getKey("V_ROUTER_VIDEO_MODEL");
       },
+      get agnesBaseUrl() {
+        return getKey("AGNES_VIDEO_BASE_URL") || "https://apihub.agnes-ai.com/v1";
+      },
+      get agnesApiKey() {
+        return getKey("AGNES_VIDEO_API_KEY");
+      },
+      get agnesVideoModel() {
+        return getKey("AGNES_VIDEO_MODEL") || "agnes-video-2.5-flash";
+      },
+      get geminiBaseUrl() {
+        return (
+          getKey("GEMINI_BASE_URL") ||
+          "https://generativelanguage.googleapis.com"
+        );
+      },
+      get geminiApiKey() {
+        return getKey("GEMINI_API_KEY");
+      },
+      get geminiOmniVideoModel() {
+        return getKey("GEMINI_OMNI_VIDEO_MODEL") || "gemini-omni-1.2-flash";
+      },
       get byteplusModel() {
         return getKey("BYTEPLUS_VIDEO_MODEL") || "seedance-1-5-pro-251215";
       },
@@ -368,6 +400,7 @@ export function serverPlugins(options: { projectStoreHttp?: boolean } = {}): Plu
       },
     }),
     firecrawlPlugin({
+      get searchProvider() { return getKey("WEB_SEARCH_PROVIDER"); },
       get apiKey() {
         return getKey("FIRECRAWL_API_KEY");
       },

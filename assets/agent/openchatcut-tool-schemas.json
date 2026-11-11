@@ -198,7 +198,7 @@
     },
     {
       "name": "split_item",
-      "description": "Split a clip into two at the given absolute frame.",
+      "description": "Split a clip into two at the given absolute frame. A motion graphic splits into two windows of the SAME animation — the second piece continues from the frame at the cut instead of restarting — so to separate one MG into several clips, split it at the beat frames; never regenerate the pieces.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1162,7 +1162,7 @@
     },
     {
       "name": "submit_image",
-      "description": "Generate one or more AI images (Fal catalog, gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, or xAI Grok Imagine), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
+      "description": "Generate one or more AI images (Fal catalog, gpt-image-2, nano-banana, MiniMax image-01, WaveSpeed, BytePlus Seedream, xAI Grok Imagine, or Agnes Image), save them to the project media pool, and optionally propose adding them to the active timeline. Call only when the user explicitly requested the generation.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1175,10 +1175,11 @@
               "wavespeed",
               "byteplus",
               "grok-imagine",
+              "agnes-image",
               "vrouter",
               "fal"
             ],
-            "description": "gpt-image-2 is the default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K)."
+            "description": "Use the model named in capabilities. gpt-image-2 only when that vendor is the configured default; nano-banana is best for reference-heavy work; image-01 is MiniMax (at most 9 outputs; one subject reference when R2 is configured); wavespeed is WaveSpeed AI (fast generic image models, no references); byteplus is BytePlus ModelArk Seedream (no references yet); grok-imagine is xAI Grok Imagine (text-to-image only, no references, at most 4 outputs, 1K/2K); agnes-image is Agnes Image (text or up to 8 reference images, 1K/2K/3K/4K, at most 4 outputs, no custom width/height or GPT options)."
           },
           "falModel": {
             "type": "string",
@@ -1267,7 +1268,7 @@
               "type": "string"
             },
             "maxItems": 16,
-            "description": "Project image asset IDs. Limits: GPT 16, Gemini 14, MiniMax 1 subject reference (MiniMax needs configured R2)."
+            "description": "Project image asset IDs. Limits: GPT 16, Gemini 14, MiniMax 1 subject reference (MiniMax needs configured R2), Agnes 8."
           },
           "maskAssetId": {
             "type": "string",
@@ -1277,7 +1278,7 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 10,
-            "description": "Number of images; defaults to 1. image-01 max 9."
+            "description": "Number of images; defaults to 1. image-01 max 9. agnes-image and grok-imagine max 4."
           },
           "background": {
             "type": "string",
@@ -1364,7 +1365,7 @@
           },
           "voiceId": {
             "type": "string",
-            "description": "Concrete provider-specific voice ID confirmed by the user. May be empty for V-Scheduler when Settings has a default voice, or for MiniMax timbreWeights mixing. Do not invent a preset or reuse an ID from another provider."
+            "description": "Concrete provider-specific voice ID confirmed by the user. Required except MiniMax timbreWeights mixing, V-Scheduler with a configured default voice, and Doubao when a default speaker ID is saved in Settings. For Doubao, pass the exact Volcengine speaker ID verbatim (for example S_5wulnA7i2 or zh_female_vv_uranus_bigtts); it is sent unchanged as references[].speaker. Do not invent a preset or reuse an ID from another provider."
           },
           "modelId": {
             "type": "string",
@@ -1489,13 +1490,7 @@
           },
           "emotion": {
             "type": "string",
-            "description": "Doubao or MiniMax emotion label. MiniMax accepts: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
-          },
-          "emotionScale": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 5,
-            "description": "Doubao only. Requires emotion."
+            "description": "MiniMax only. One of: happy, sad, angry, fearful, disgusted, surprised, calm, fluent, whisper."
           },
           "loudnessRatio": {
             "type": "number",
@@ -1507,27 +1502,13 @@
             "type": "number",
             "minimum": -12,
             "maximum": 12,
-            "description": "Doubao: post-process semitones. MiniMax: native voice_setting.pitch (-12–12)."
+            "description": "Doubao: native audio_config.pitch_rate (-12–12). MiniMax: native voice_setting.pitch (-12–12)."
           },
           "volume": {
             "type": "number",
             "exclusiveMinimum": 0,
             "maximum": 10,
             "description": "MiniMax only. voice_setting.vol (>0–10). Defaults to 1."
-          },
-          "performancePrompt": {
-            "type": "string",
-            "maxLength": 200,
-            "description": "Doubao only. Natural-language performance direction."
-          },
-          "explicitDialect": {
-            "type": "string",
-            "enum": [
-              "dongbei",
-              "shaanxi",
-              "sichuan"
-            ],
-            "description": "Doubao only; supported by the Vivi preset."
           },
           "sampleRate": {
             "type": "integer",
@@ -1978,7 +1959,7 @@
     },
     {
       "name": "submit_video",
-      "description": "Submit a V-Scheduler, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, or OFox video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
+      "description": "Submit a V-Scheduler, Fal catalog, Seedance 2.0, Kling, MiniMax Hailuo, BytePlus Seedance, xAI Grok Imagine, Google Gemini Omni, OFox, or Agnes Video generation job and create one video asset in the project media pool. Does not place the video on the timeline. Keep image, video, and audio references in their matching arrays.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1991,10 +1972,12 @@
               "byteplus",
               "grok-imagine-video",
               "ofox",
+              "agnes-video",
               "vrouter",
-              "fal"
+              "fal",
+              "gemini-omni"
             ],
-            "description": "hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet."
+            "description": "Use the model named in capabilities. hailuo is MiniMax: 6 or 10s; firstFrame optional; lastFrame allowed with firstFrame; no multi-ref or multi-shot. 1080p is 6s only. byteplus is BytePlus ModelArk Seedance — same request shape/limits as seedance2. grok-imagine-video is xAI Grok Imagine: text-to-video only, 1–15s, audio track included, no references/frames. ofox is the OFox multi-model gateway (Seedance/Wan and more behind one key): 2–30s with per-model limits enforced by the API; supports firstFrame (and optional lastFrame), or up to 9 refImages (frames and refImages are mutually exclusive); no refVideos/refAudios yet. agnes-video is Agnes Video 2.5 Flash: 4–12s (default 5), 720p only; text, first and/or last frame, or up to 5 refImages plus 3 refAudios. Frames and references are mutually exclusive. No refVideos. gemini-omni is Google Gemini Omni Flash (GEMINI_API_KEY): text, firstFrame, firstFrame+lastFrame, or up to 6 refImages (frames and refImages are mutually exclusive); 16:9 or 9:16; 360p/720p/1080p/4k; 3–15s, 3–10s with firstFrame+lastFrame."
           },
           "falModel": {
             "type": "string",
@@ -2029,25 +2012,25 @@
                 "type": "string"
               }
             ],
-            "description": "For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API)."
+            "description": "For Fal, see falModel limits and omit to use model default. Native providers: integer seconds, 2–15 for Seedance, 3–15 for Kling, exactly 6 or 10 for Hailuo (Hailuo 1080p → 6 only), 1–15 for grok-imagine-video, 2–30 for ofox (per-model limits enforced by the API), 4–12 for agnes-video (default 5), 3–15 for gemini-omni (3–10 with firstFrame+lastFrame; omit for the 10s default)."
           },
           "ratio": {
             "type": "string",
-            "description": "Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. ofox: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9, 9:21. Do not send for hailuo."
+            "description": "Seedance: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. Kling: 16:9, 9:16, 1:1. grok-imagine-video: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3. ofox: 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9, 9:21. agnes-video: 16:9, 9:16, 1:1, 4:3, 3:4, 21:9. gemini-omni: 16:9, 9:16. Do not send for hailuo."
           },
           "resolution": {
             "type": "string",
             "enum": [
+              "360p",
               "480p",
               "512p",
               "720p",
               "1080p",
               "4k",
               "768p",
-              "360p",
               "540p"
             ],
-            "description": "Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p. ofox: 480p/720p(default)/1080p, per-model support enforced by the API."
+            "description": "Seedance: 480p/720p(default)/1080p/4k. Hailuo: 512p (Hailuo-02), 720p→API 768P, 1080p (6s only). Kling: pair with mode std/pro. grok-imagine-video: 480p(default)/720p/1080p. ofox: 480p/720p(default)/1080p, per-model support enforced by the API. agnes-video: 720p only; omit otherwise. gemini-omni: 360p/720p(default)/1080p/4k."
           },
           "mode": {
             "type": "string",
@@ -2063,7 +2046,7 @@
           },
           "lastFrame": {
             "type": "string",
-            "description": "Project image asset reference; requires firstFrame. Supported on seedance2, kling, hailuo, and ofox (not with multi-ref on seedance2/ofox)."
+            "description": "Project image asset reference; requires firstFrame. Supported on seedance2, kling, hailuo, ofox, and gemini-omni (not with multi-ref on seedance2/ofox/gemini-omni)."
           },
           "refImages": {
             "type": "array",
@@ -2539,7 +2522,7 @@
     },
     {
       "name": "download_media",
-      "description": "Download a media file from a public URL into the project media pool. Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override. Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset. Serial: each call has a 75s window to start URLs, so pass at most 3 urls per call and call again for the rest. An unreachable host is a failed row, never a remote fallback. Each successful row carries probe (duration, dimensions, fps, audio/video tracks, codecs, qualityRisks) measured by the local ffprobe at import time — do not call probe_media for a file you just downloaded. Bytes that are not readable media fail as not_media and never enter the pool.",
+      "description": "Download a media file from a public URL into the project media pool. Accepts a single url or array of urls. Type inferred from extension / Content-Type; pass type to override. Local-dev: server fetches bytes into /media/uploads (S3 stand-in). Returns { failed, succeeded, results } like push_asset. Serial: URLs download one at a time and each gets its own row. An unreachable host is a failed row, never a remote fallback. Each successful row carries probe (duration, dimensions, fps, audio/video tracks, codecs, qualityRisks) measured by the local ffprobe at import time — do not call probe_media for a file you just downloaded. Bytes that are not readable media fail as not_media and never enter the pool.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -3784,10 +3767,18 @@
     },
     {
       "name": "web_browser",
-      "description": "Scrape a single web page via Firecrawl (web_browser → Firecrawl /scrape). formats: markdown (default), html, rawHtml, images, links, branding, summary, screenshot, videos. branding = native brand kit (colors/fonts/logo); summary = native page summary. screenshot is auto-saved to media pool as screenshotAssetId when possible. For many known URLs use web_batch_scrape; site discovery use web_map; multi-page crawl use web_crawl; search use web_search.",
+      "description": "Read a web page through Firecrawl (requires its key), or as Parallel excerpts when the user enabled WEB_SEARCH_PROVIDER=parallel. Parallel supports markdown excerpts and an optional query; advanced formats/actions require provider=firecrawl. formats: markdown (default), html, rawHtml, images, links, branding, summary, screenshot, videos. branding = native brand kit (colors/fonts/logo); summary = native page summary. screenshot is auto-saved to media pool as screenshotAssetId when possible. For many known URLs use web_batch_scrape; site discovery use web_map; multi-page crawl use web_crawl; search use web_search.",
       "input_schema": {
         "type": "object",
         "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "parallel",
+              "firecrawl"
+            ],
+            "description": "Optional. \"parallel\" works only when the user enabled WEB_SEARCH_PROVIDER=parallel; \"firecrawl\" requires a configured key."
+          },
           "url": {
             "type": "string",
             "description": "Page URL (http/https)."
@@ -3832,7 +3823,7 @@
           },
           "query": {
             "type": "string",
-            "description": "NL structured-extraction prompt."
+            "description": "Focus for Parallel excerpts; structured-extraction prompt for Firecrawl."
           },
           "schema": {
             "description": "JSON schema for structured extraction."
@@ -3854,10 +3845,18 @@
     },
     {
       "name": "web_search",
-      "description": "Search the web via Firecrawl /search (official API). Returns titles, URLs, descriptions; by default also scrapes markdown for each hit (scrapeMarkdown=true). Use site: / filetype: operators in query when helpful. Prefer this to inventing URLs. Then web_browser a specific URL for deep scrape/screenshot.",
+      "description": "Search the web through Firecrawl (requires its key), or anonymous Parallel Search MCP when the user enabled WEB_SEARCH_PROVIDER=parallel. Returns titles, URLs and descriptions; Firecrawl can also scrape markdown per hit, Parallel returns source excerpts. Use provider to override; country/lang/tbs filters require Firecrawl. Use site: / filetype: operators in query when helpful. Prefer this to inventing URLs. Then web_browser a specific URL for deep scrape/screenshot.",
       "input_schema": {
         "type": "object",
         "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "parallel",
+              "firecrawl"
+            ],
+            "description": "Optional. \"parallel\" works only when the user enabled WEB_SEARCH_PROVIDER=parallel; \"firecrawl\" requires a configured key."
+          },
           "query": {
             "type": "string",
             "description": "Search query (supports operators like site:example.com)."
@@ -3880,7 +3879,7 @@
           },
           "scrapeMarkdown": {
             "type": "boolean",
-            "description": "If true (default), include markdown for each result via scrapeOptions."
+            "description": "Firecrawl only: include scraped markdown for each result (default true). Parallel returns excerpts."
           }
         },
         "required": [
@@ -5395,7 +5394,7 @@
     },
     {
       "name": "browse_local_media",
-      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop access is enabled by default and an explicit AGENT_IMPORT_ROOTS setting restricts it; a browser session requires that allowlist. Defaults to the home directory; pass an absolute path to browse a specific folder or drive. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5438,7 +5437,7 @@
     },
     {
       "name": "import_assets",
-      "description": "Import selected local media paths into the media pool in one batch. Desktop only. Local access is enabled by default; explicit AGENT_IMPORT_ROOTS restricts access. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
+      "description": "Import selected local media paths into the media pool in one batch. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Reuses normal media probing and skips duplicate content. Use browse_local_media to find paths first.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5460,7 +5459,7 @@
     },
     {
       "name": "import_asset",
-      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
+      "description": "Import ONE local media file (video/audio/image) by its absolute disk path into the media pool. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Returns the imported pool asset(s); duplicates already in the pool are skipped.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -5476,7 +5475,7 @@
     },
     {
       "name": "import_folder",
-      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop app only; local access is enabled by default. Explicit AGENT_IMPORT_ROOTS restricts access. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
+      "description": "Import every supported media file inside a local directory (recursive, bounded) into the media pool. Desktop access is enabled by default; a browser session requires an explicit AGENT_IMPORT_ROOTS allowlist. Returns imported assets, duplicate counts, unsupported file names, and per-file errors. Documents (txt/md/docx/pdf) are reported as unsupported here and should be attached to chat instead.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -6295,7 +6294,7 @@
     },
     {
       "name": "browse_local_media",
-      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop only. Defaults to the home directory; absolute paths may include external drives. Local access is enabled by default; an explicit AGENT_IMPORT_ROOTS setting restricts access. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
+      "description": "Browse local directories or search local media filenames before importing into the media pool. Desktop access is enabled by default and an explicit AGENT_IMPORT_ROOTS setting restricts it; a browser session requires that allowlist. Defaults to the home directory; pass an absolute path to browse a specific folder or drive. Returns directories and supported media paths, sizes, and modification times without importing. Use recursive with query/kind to find candidates, then import_assets for selected files. Follow nextOffset for more results. If truncated, browse narrower subdirectories; symlinks are not followed.",
       "input_schema": {
         "type": "object",
         "properties": {

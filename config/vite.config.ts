@@ -111,9 +111,10 @@ export default defineConfig(({ mode }) => {
   const imageKey = env.IMAGE_API_KEY || env.OPENAI_API_KEY || '';
   const geminiKey = env.GEMINI_API_KEY || '';
   const falKey = env.FAL_KEY || '';
+  const agnesKey = env.AGNES_IMAGE_API_KEY || '';
+  const agnesVideoKey = env.AGNES_VIDEO_API_KEY || '';
   const elevenKey = env.ELEVENLABS_API_KEY || '';
-  const doubaoAppId = env.DOUBAO_TTS_APP_ID || '';
-  const doubaoAccessKey = env.DOUBAO_TTS_ACCESS_KEY || '';
+  const doubaoKey = env.DOUBAO_TTS_API_KEY || '';
   const murekaKey = env.MUREKA_API_KEY || '';
   // MiniMax domestic open platform — one key gates TTS / Hailuo video / music / image.
   const minimaxKey = env.MINIMAX_API_KEY || '';
@@ -136,9 +137,9 @@ export default defineConfig(({ mode }) => {
     define: {
       __APP_VERSION__: JSON.stringify(displayAppVersion),
       __CONFIGURED_CAPS__: JSON.stringify({
-        image: Boolean(imageKey || geminiKey || minimaxKey || falKey),
-        voice: Boolean((doubaoAppId && doubaoAccessKey) || elevenKey || minimaxKey),
-        video: Boolean(seedanceKey || klingKey || minimaxKey || falKey),
+        image: Boolean(imageKey || geminiKey || minimaxKey || falKey || agnesKey),
+        voice: Boolean(doubaoKey || elevenKey || minimaxKey),
+        video: Boolean(seedanceKey || klingKey || minimaxKey || falKey || agnesVideoKey),
         music: Boolean(murekaKey || minimaxKey),
         sound: Boolean(elevenKey),
         stock: Boolean(pexelsKey || pixabayKey || unsplashKey || freesoundKey),

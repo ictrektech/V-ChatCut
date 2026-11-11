@@ -18,6 +18,10 @@
 </p>
 
 <p align="center">
+  <a href="https://openchatcut.com/pro"><strong>OpenChatCut Pro</strong></a> · Desktop edition: install it and start cutting
+</p>
+
+<p align="center">
   <a href="#what-is-openchatcut">Introduction</a> ·
   <a href="#product-tour">Product Tour</a> ·
   <a href="#quick-start">Quick Start</a> ·
@@ -298,9 +302,9 @@ The built-in Agent always runs the model loop on the local server. Chat, drafts,
 
 ### Agent local-path access (advanced)
 
-Desktop agents can browse any local directory allowed by the operating system by default, including mounted media drives. `browse_local_media` lists folders and supported media, searches by filename or relative path and media type, and returns paginated results without importing. The agent can then use `import_assets` for up to 100 selected paths, `import_asset` for one path, or `import_folder` for a whole folder. Imports reuse media probing and reference registration, preserve source files, and skip duplicate content, including duplicates within one batch. Document files such as TXT, Markdown, DOCX, and PDF should be attached to chat instead. These tools require the desktop app.
+Desktop agents can browse any local directory allowed by the operating system by default, including mounted media drives. `browse_local_media` lists folders and supported media, searches by filename or relative path and media type, and returns paginated results without importing. The agent can then use `import_assets` for up to 100 selected paths, `import_asset` for one path, or `import_folder` for a whole folder. Imports reuse media probing and reference registration, preserve source files, and skip duplicate content, including duplicates within one batch. Document files such as TXT, Markdown, DOCX, and PDF should be attached to chat instead. In the desktop app these tools are enabled by default; in a browser session they also work, but only for directories listed in `AGENT_IMPORT_ROOTS` and while the editor is served from the same machine that runs OpenChatCut.
 
-To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects` in `.env.local`; leave it empty for default unrestricted directory access. Explicit restrictions apply to both browsing and import. Source checkouts read the repository file at startup. Packaged desktop builds read it from Electron's user-data directory: `~/Library/Application Support/OpenChatCut/` on macOS, `%APPDATA%\OpenChatCut\` on Windows, and `$XDG_CONFIG_HOME/OpenChatCut/` (normally `~/.config/OpenChatCut/`) on Linux. Restart after editing the file.
+To restrict local access, set a comma-separated value such as `AGENT_IMPORT_ROOTS=/Volumes/Media,D:\Projects` in `.env.local`; leave it empty for default unrestricted directory access in the desktop app (a browser session requires the allowlist and refuses these tools while it is empty). Explicit restrictions apply to both browsing and import. Source checkouts read the repository file at startup. Packaged desktop builds read it from Electron's user-data directory: `~/Library/Application Support/OpenChatCut/` on macOS, `%APPDATA%\OpenChatCut\` on Windows, and `$XDG_CONFIG_HOME/OpenChatCut/` (normally `~/.config/OpenChatCut/`) on Linux. Restart after editing the file.
 
 
 Local H.264 exports automatically prefer VideoToolbox on macOS and NVENC on compatible Windows systems, then fall back to software encoding. Tune render concurrency and the heavy-export limit with `OPENCHATCUT_RENDER_CONCURRENCY` and `OPENCHATCUT_MAX_ACTIVE_EXPORTS`, disable hardware encoding with `OPENCHATCUT_DISABLE_HARDWARE_ENCODING`, or override FFmpeg-side encoder selection with `OPENCHATCUT_H264_ENCODER`; see [`.env.example`](.env.example).
@@ -316,6 +320,8 @@ npm run desktop:dev
 The desktop app uses an Electron shell with the same embedded services. The web development build and desktop build share project, agent, generation, and export logic.
 
 ### VOS integration
+
+This VOS build tracks OpenChatCut 0.2.17 and subsequent fixes on upstream main. In Settings, Agnes is available for images and video, Gemini Omni for video, and Doubao TTS accepts a provider speaker ID or the saved default. The existing V-Scheduler choice remains available. See the in-app API guide for generation limits and the MCP tool schemas.
 
 The VOS application definition lives in `ictrek.app/`, and container build files live in `vos_docker/`. The frontend has AMD64 and ARM64 images only. The backend provides six mutually exclusive profiles: `amd-with-cuda`, `amd-without-cuda`, `arm-with-cuda`, `arm-without-cuda`, `l4t`, and `thor-spark`; installation requires one. VOS uses host architecture, CUDA, and `device-type` caps to determine which profiles are available. CUDA profiles prefer NVENC and automatically fall back to libx264 when hardware encoding is unavailable. Analysis and frame extraction use hardware decoding only after the device probe succeeds, so CPU profiles also work with system FFmpeg builds that advertise VA-API. Use `vos_docker/build_image.sh --sheet <Feishu-sheet>` on each matching build host; image tags contain only the platform and build date. Then run `ictrek.app/scripts/update_version.sh patch` to trigger the VOS pull-package workflow. The top-right About control reads `VOS_APP_VERSION` from the running backend, so its version matches the installed VOS package even when a package reuses an existing image.
 
@@ -475,7 +481,7 @@ Clients must send `Authorization: Bearer <token>`. The current bridge is designe
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite 8 |
 | Editing core | Immutable timeline state, command layer, and proposal-based application |
-| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, Requesty, Cheaper Inference, and compatible APIs), Agent Skills, MCP SDK |
+| Agent | Vercel AI SDK 7 (Anthropic, OpenAI, Gemini, Kimi, Qwen, GLM, DeepSeek, MiniMax, Xiaomi MiMo, Mistral, xAI Grok by API key or SuperGrok/X Premium+ subscription sign-in, OpenRouter, OrcaRouter, OFox, Requesty, Cheaper Inference, Runcrate, and compatible APIs), Agent Skills, MCP SDK |
 | Preview and visuals | Remotion Player, WebGL / GLSL |
 | Server | Dual-host Vite / Electron plugins and a server-side keystore |
 | Persistence | Shared local project store under `~/.openchatcut`, IndexedDB cache, configurable local media directory, optional Cloudflare R2 |
@@ -597,6 +603,25 @@ Third-party components and assets remain subject to their respective licenses.
 
 ---
 
+
+## Web research in the built-in agent
+
+`web_search` and basic `web_browser` page reading use Firecrawl, which needs a
+`FIRECRAWL_API_KEY`. To use [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+instead, which needs no account or API key, set `WEB_SEARCH_PROVIDER=parallel` in
+`.env.local` and restart. Parallel search returns source URLs, titles and relevant
+excerpts; its page reading returns markdown excerpts rather than full-page HTML or
+screenshots. Queries and requested URLs are sent to the selected provider. Anonymous
+access has service quotas; provider errors are returned without switching providers.
+
+Leaving `WEB_SEARCH_PROVIDER` empty or setting `firecrawl` keeps Firecrawl, and
+`disabled` turns basic search and page reading off. A tool call can pick
+`provider: "firecrawl"`, and `"parallel"` only once Parallel is enabled. Search
+locale and time filters, screenshots, browser actions, structured extraction,
+full-page formats, mapping, crawling and batch scraping always need Firecrawl and its key.
+
+Related search and page-reading calls reuse an opaque conversation ID. Clearing
+the chat starts a new ID; the project ID and chat text are never used as that ID.
 
 ## Contributing
 

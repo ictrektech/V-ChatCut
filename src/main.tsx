@@ -10,7 +10,7 @@ import { alignWithPlatformLocale, ensureLocaleDict, getLocale, prefetchLocaleDic
 
 // Kick the active locale's dictionary off FIRST so its fetch overlaps the setup
 // below; the render waits on it so no frame renders untranslated copy. Only
-// this one language is fetched — the other three cost nothing until switched.
+// this one language is fetched — the other locales cost nothing until switched.
 const initialLocale = getLocale();
 const localeReady = ensureLocaleDict(initialLocale);
 

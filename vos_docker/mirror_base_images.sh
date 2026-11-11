@@ -50,8 +50,8 @@ mirror_image() {
 }
 
 # Keep this list in sync with every external FROM image used by vos_docker/.
-mirror_image node 24-bookworm-slim 24-bookworm-slim
-mirror_image node 24-alpine 24-alpine
+mirror_image node 24.22.1-bookworm-slim 24.22.1-bookworm-slim
+mirror_image node 24.22.1-alpine 24.22.1-alpine
 mirror_image nginx 1.29-alpine 1.29-alpine
 
 log "Base-image mirror completed for ${HOST_ARCH}"

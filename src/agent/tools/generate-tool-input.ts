@@ -38,7 +38,9 @@ export function buildSubmitImageArgs(args: GenerateArgs): SubmitImageArgs {
   if (model === 'image-01') {
     return { ...shared, width, height, seed: num(args.seed), promptOptimizer: bool(args.promptOptimizer) };
   }
-  if (model === 'nano-banana') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  if (model === 'nano-banana' || model === 'agnes-image') {
+    return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'] };
+  }
   if (model === 'wavespeed' || model === 'byteplus' || model === 'vrouter') return { ...shared, imageSize: args.imageSize as SubmitImageArgs['imageSize'], width, height };
   const outputFormat = args.outputFormat as SubmitImageArgs['outputFormat'];
   return {
@@ -73,9 +75,8 @@ function elevenVoice(args: GenerateArgs): SubmitVoiceArgs {
 }
 
 const doubaoVoice = (args: GenerateArgs): SubmitVoiceArgs => ({
-  ...voiceBase(args, 'doubao'), speedRatio: num(args.speedRatio), emotion: str(args.emotion),
-  emotionScale: num(args.emotionScale), loudnessRatio: num(args.loudnessRatio), pitch: num(args.pitch),
-  performancePrompt: str(args.performancePrompt), explicitDialect: args.explicitDialect as SubmitVoiceArgs['explicitDialect'],
+  ...voiceBase(args, 'doubao'), speedRatio: num(args.speedRatio),
+  loudnessRatio: num(args.loudnessRatio), pitch: num(args.pitch),
 });
 
 function minimaxVoice(args: GenerateArgs): SubmitVoiceArgs {
@@ -232,6 +233,14 @@ const hailuoVideo = (args: GenerateArgs): SubmitVideoArgs => ({
 });
 // xAI Grok Imagine Video: text-to-video only — the base fields are the whole surface.
 const grokVideo = (args: GenerateArgs): SubmitVideoArgs => videoBase(args, 'grok-imagine-video');
+const agnesVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, 'agnes-video'), ratio: str(args.ratio),
+  refImages: list(args.refImages), refAudios: list(args.refAudios), seed: num(args.seed),
+});
+
+const geminiOmniVideo = (args: GenerateArgs): SubmitVideoArgs => ({
+  ...videoBase(args, 'gemini-omni'), ratio: str(args.ratio), refImages: list(args.refImages),
+});
 
 const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   for (const key of ['mode', 'refVideoMode', 'promptOptimizer', 'fastPretreatment', 'seed', 'cameraFixed', 'watermark', 'returnLastFrame', 'executionExpiresAfter', 'priority', 'multiPrompts', 'shotType']) {
@@ -244,10 +253,15 @@ const falVideo = (args: GenerateArgs): SubmitVideoArgs => {
   });
 };
 
-const VIDEO_STRATEGIES = { vrouter: (args: GenerateArgs) => videoBase(args, 'vrouter'), fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo, byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo } as const;
+const VIDEO_STRATEGIES = {
+  vrouter: (args: GenerateArgs) => videoBase(args, 'vrouter'),
+  fal: falVideo, seedance2: seedanceVideo, kling: klingVideo, hailuo: hailuoVideo,
+  byteplus: byteplusVideo, 'grok-imagine-video': grokVideo, ofox: ofoxVideo,
+  'agnes-video': agnesVideo, 'gemini-omni': geminiOmniVideo,
+} as const;
 export function buildSubmitVideoArgs(args: GenerateArgs): SubmitVideoArgs {
   const model = args.model === undefined ? 'seedance2' : args.model;
-  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'fal' && model !== 'vrouter') {
+  if (model !== 'seedance2' && model !== 'kling' && model !== 'hailuo' && model !== 'byteplus' && model !== 'grok-imagine-video' && model !== 'ofox' && model !== 'agnes-video' && model !== 'fal' && model !== 'vrouter' && model !== 'gemini-omni') {
     throw new Error('Unsupported video model; select an available provider before submitting or rerunning.');
   }
   return VIDEO_STRATEGIES[model](args);

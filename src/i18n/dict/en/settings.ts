@@ -120,7 +120,6 @@ export default {
   '生图模型': 'Image model',
   '配音模型': 'Voice model',
   '音效模型': 'Sound model',
-  '音色资源 ID': 'Voice resource ID',
   '视频模型': 'Video model',
   '音乐模型': 'Music model',
   '云同步': 'Cloud sync',
@@ -154,6 +153,7 @@ export default {
   '法语（fr）': 'French (fr)',
   '德语（de）': 'German (de)',
   '俄语（ru）': 'Russian (ru)',
+  '葡萄牙语（pt）': 'Portuguese (pt)',
   '启用': 'On',
   '停用': 'Off',
   '本地模型（whisper）': 'Local model (Whisper)',
@@ -204,6 +204,9 @@ export default {
   '本地转写、节拍与音乐分析、画面语义搜索。模型按需安装，数据不出本机。':
     'Local transcription, beat/music analysis, and visual semantic search. Models are installed on demand and data stays on this machine.',
   '默认 https://api.fish.audio': 'Default https://api.fish.audio',
+  'Agnes Image 2.5 Flash，文生图与图生图。尺寸档位 1K/2K/3K/4K，支持多种宽高比。': 'Agnes Image 2.5 Flash: text-to-image and image-to-image. Size tiers 1K/2K/3K/4K, with many aspect ratios.',
+  'Agnes Video 2.5 Flash，文生视频、首尾帧控制与图片/音频参考。固定 720P，时长 4–12 秒。': 'Agnes Video 2.5 Flash: text-to-video, first/last-frame control and image/audio references. Fixed 720p, 4–12 seconds.',
+  '默认 https://apihub.agnes-ai.com/v1': 'Default https://apihub.agnes-ai.com/v1',
   '默认 https://api.inworld.ai': 'Default https://api.inworld.ai',
   '默认 https://api.sws.speechify.com': 'Default https://api.sws.speechify.com',
   '默认 https://api.wavespeed.ai': 'Default https://api.wavespeed.ai',
@@ -352,6 +355,9 @@ export default {
     'Generates images with your xAI subscription session (SuperGrok / X Premium+, preferred) or LLM_XAI_API_KEY. Text-to-image: up to 4 images, 1K / 2K.',
   '使用 xAI 订阅会话（SuperGrok / X Premium+，优先）或 LLM_XAI_API_KEY 生成视频。文生视频：1–15 秒，自带音轨，480p / 720p / 1080p。':
     'Generates videos with your xAI subscription session (SuperGrok / X Premium+, preferred) or LLM_XAI_API_KEY. Text-to-video: 1–15s, audio track included, 480p / 720p / 1080p.',
+  '使用 GEMINI_API_KEY（与 Nano Banana 生图相同）。文生视频 / 图生视频 / 首尾帧 / 最多 6 张参考图；比例仅 16:9 与 9:16；分辨率 360p / 720p / 1080p / 4k；时长 3–15 秒（首尾帧 3–10 秒，不填默认 10 秒）。默认模型 gemini-omni-1.2-flash。':
+    'Uses GEMINI_API_KEY (same key as Nano Banana images). Text-to-video / image-to-video / first and last frame / up to 6 reference images; 16:9 and 9:16 only; 360p / 720p / 1080p / 4k; 3–15 seconds (3–10 with first and last frames, 10 when unset). Default model gemini-omni-1.2-flash.',
+  'Google AI Studio / Gemini API 的 Omni 视频模型 ID。': 'Omni video model ID from Google AI Studio / the Gemini API.',
   'OFox · 多模型': 'OFox · Multi-model',
   'OFox · 多模型网关': 'OFox · Multi-model Gateway',
   '使用 LLM_OFOX_API_KEY（在 Agent 供应商里配置 OFox）生成视频。一个 Key 覆盖 Seedance、Wan 等视频模型；支持文生视频、首帧/首尾帧图生视频与图片参考（最多 9 张）；时长/分辨率按模型由 API 校验，2–30 秒。':
@@ -398,6 +404,9 @@ export default {
   '默认 https://generativelanguage.googleapis.com': 'Default https://generativelanguage.googleapis.com',
   '默认 https://api.elevenlabs.io': 'Default https://api.elevenlabs.io',
   '默认 https://openspeech.bytedance.com': 'Default https://openspeech.bytedance.com',
+  '音色 ID（speaker）': 'Voice ID (speaker)',
+  '由对话选择': 'Chosen in chat',
+  '粘贴火山控制台复制的音色 ID（如 S_5wulnA7i2）；填写后豆包配音默认用它，对话里指定其它音色仍可覆盖。': 'Paste the voice ID copied from the Volcengine console (for example S_5wulnA7i2). When set, Doubao TTS uses it by default; naming another voice in chat still overrides it.',
   '默认 https://ark.cn-beijing.volces.com/api/v3': 'Default https://ark.cn-beijing.volces.com/api/v3',
   '默认 https://api-singapore.klingai.com': 'Default https://api-singapore.klingai.com',
   '默认 https://api.mureka.ai': 'Default https://api.mureka.ai',
