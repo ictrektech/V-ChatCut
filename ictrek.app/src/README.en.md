@@ -1,5 +1,7 @@
 # V-ChatCut
 
+In VOS, open **Application Management → App Drawer → V-ChatCut → API documentation**.
+
 After installation, open the app from **V-ChatCut** in the VOS top-level navigation.
 
 V-ChatCut is a local-first, agent-native multitrack video editor with media management, captions, motion graphics, intelligent analysis, media generation, and video export.

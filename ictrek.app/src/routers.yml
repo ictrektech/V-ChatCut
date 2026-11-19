@@ -1,3 +1,4 @@
+router-type: structured
 routers:
   - id: v-chatcut
     kind: page
@@ -17,5 +18,4 @@ routers:
     order: 221
     iframe-src: /app/com.ictrek.v-chatcut/api-guide.html
     keep-alive: true
-    entry-point: true
     embed: true
